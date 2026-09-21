@@ -107,9 +107,14 @@ This will execute the full boot sequence:
 
 ### Worker and Kernel Bridge
 
-Cloudflare Workers cannot start local subprocesses. Deploy the Python adapter
-separately and configure either a `KERNEL_SERVICE` service binding or a
-`KERNEL_URL` Worker variable. For local adapter development:
+The production Worker uses the `PORTAL_KERNEL` Durable Object binding as its
+only kernel bridge. Universe, umbrella, and generic kernel requests all pass
+through the same `/api/kernel/message` Durable Object endpoint. OS-level
+requests are governance-preflighted by the Durable Object and then forwarded
+through the typed `MAX_OS_1` service binding. No deployed Worker URL is stored
+in application code or configuration.
+
+The Python adapter remains available for local kernel regression development:
 
 ```bash
 python kernel/http_adapter.py --port 8788
@@ -126,9 +131,48 @@ printf '%s' '{"id":"demo","type":"sim","payload":{},"identity":"a-locally-genera
 Identity tokens are loaded from `PORTAL_SYSTEM_TOKEN`, `PORTAL_SERVICE_TOKEN`,
 and `PORTAL_OBSERVER_TOKEN`; there are no built-in production credentials.
 
-Set `MAXOS_MODULE` to the installed MAX-OS-1 Python module exporting
-`MaxOsUnifiedOrchestrator`. Without it, a deterministic in-memory universe is
-used for local development and integration tests.
+Worker API requests use per-login HS256 JWTs. Configure the shared signing key
+as a server-only Cloudflare secret before deployment; never place it in a GUI
+environment file:
+
+```bash
+npx wrangler secret put IDENTITY_JWT_SECRET
+```
+
+The token must contain `sub` and future `exp` claims. Its issuer and audience
+must match `IDENTITY_JWT_ISSUER` and `IDENTITY_JWT_AUDIENCE` in `wrangler.toml`.
+The Worker verifies the signature and claims before forwarding the original
+token through the kernel and MAX-OS-1 bindings.
+
+Set `MAXOS_MODULE` when running the Python adapter with an installed MAX-OS-1
+module exporting `MaxOsUnifiedOrchestrator`. Without it, Python integration
+tests use a deterministic in-memory universe.
+
+### Cloudflare deployment
+
+`wrangler.toml` declares the `PortalKernel` SQLite Durable Object migration and
+the `MAX_OS_1` service binding to the `max-os-1` Worker. Deploy MAX-OS-1 first,
+then validate and deploy this Worker:
+
+```bash
+npm test
+npm run check
+python -m unittest discover -s tests -p '*.py'
+npx wrangler deploy --dry-run
+npm run deploy
+```
+
+The first live deploy applies the Durable Object migration. `UMBRELLA_ENFORCEMENT`
+accepts `strict`, `advisory`, or `off` and defaults safely to `strict` for any
+unknown value.
+
+For Cloudflare Workers Builds, set the production **Deploy command** to
+`npm run deploy`. A Durable Object lifecycle migration cannot be applied by
+`wrangler versions upload`, which is the default preview command for
+non-production branches. Until the `v1` migration has been applied from the
+production branch, either disable non-production branch builds or give a
+separate staging Worker a full `wrangler deploy --env staging` flow; do not
+remove the migration to make a preview upload pass.
 
 ## Development
 
@@ -142,6 +186,7 @@ python -c "from kernel.invariants import InvariantChecker; InvariantChecker().ch
 ```bash
 python tests/integration_rebuild2.py
 npm run check
+npm test
 ```
 
 ## Status
@@ -149,10 +194,10 @@ npm run check
 - **Rebuild 2**: Complete
 - **Architecture**: Defined
 - **Core Modules**: Initialized
-- **Next Phase**: Deploy the Python adapter and connect the external MAX-OS-1 package
+- **Next Phase**: Deploy MAX-OS-1, authenticate Wrangler, deploy planetary-max, then point the GUI environment URLs at the deployed Worker
 
 ---
 
-**Last Updated**: 2026-08-27  
+**Last Updated**: 2026-09-21
 **Rebuild Phase**: 2  
 **Status**: Integrated architecture foundation
