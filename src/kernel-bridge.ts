@@ -10,6 +10,45 @@ export type KernelEnvelope = {
   governanceContext: Record<string, unknown>;
 };
 
+export type GovernanceMetadata = {
+  mode: UmbrellaMode;
+  decision: 'allowed' | 'denied' | 'advisory' | 'bypassed';
+  deltas: Array<Record<string, unknown>>;
+};
+
+export type KernelLane = {
+  name: string;
+  result: {
+    results: Array<{
+      result: {
+        data: Record<string, unknown>;
+        meta: { source: string; governance: UmbrellaMode };
+      };
+    }>;
+  };
+};
+
+export type KernelSuccess = {
+  ok: true;
+  data: Record<string, unknown>;
+  lanes: KernelLane[];
+  meta: {
+    messageId: string;
+    type: string;
+    umbrella: string;
+    identity: { propagated: true };
+    governance: GovernanceMetadata;
+  };
+};
+
+export type KernelFailure = {
+  ok: false;
+  error: { code: string; message: string };
+  meta?: { messageId?: string; type?: string; governance?: GovernanceMetadata };
+};
+
+export type KernelResult = KernelSuccess | KernelFailure;
+
 type Fetcher = { fetch(request: Request): Promise<Response> };
 type KernelNamespace = {
   idFromName(name: string): DurableObjectId;
@@ -28,6 +67,25 @@ export type Bindings = {
 
 const KERNEL_OBJECT_NAME = 'portal-kernel';
 const KERNEL_BRIDGE_URL = 'https://portal-kernel.invalid/api/kernel/message';
+
+export function createEnvelope(
+  type: string,
+  payload: Record<string, unknown>,
+  identity: string,
+  governanceContext: Record<string, unknown>,
+  configuredMode?: string,
+): KernelEnvelope {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    payload,
+    identity,
+    governanceContext: {
+      ...governanceContext,
+      umbrellaMode: resolveUmbrellaMode(configuredMode),
+    },
+  };
+}
 
 export async function authenticatedIdentity(
   authorization: string | undefined,
@@ -158,7 +216,7 @@ function jwtAudienceIncludes(value: unknown, expected: string): boolean {
   return value === expected || (Array.isArray(value) && value.some((entry) => entry === expected));
 }
 
-function resolveUmbrellaMode(value: string | undefined): UmbrellaMode {
+export function resolveUmbrellaMode(value: string | undefined): UmbrellaMode {
   return value === 'advisory' || value === 'off' || value === 'strict' ? value : 'strict';
 }
 
