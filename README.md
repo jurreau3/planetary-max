@@ -19,7 +19,7 @@ kernel/
   └── [modules]/                  # Kernel subsystems
 identity/                          # Identity & authentication
 governance/                        # Rules & policies
-routing/                          # Message routing
+routing/                           # Message routing
 orchestration/                    # Task orchestration
 tec/                              # TEC execution layer
 cognitive/                        # SIM cognitive architecture
@@ -42,7 +42,7 @@ Transform Rebuild 1's successful deploy state into a fully integrated Portal-OS 
 5. **TEC Execution Layer** — Pipelines, agents, surfaces, governance hooks
 6. **Identity + Governance Enforcement** — Wired into routing, orchestration, kernel invariants
 7. **Routing Table** — Deterministic routing from Worker → Kernel → SIM → TEC → Substrate → Worker
-8. **Substrate State Model** — DO state, KV persistence, substrate invariants
+8. **Substrate State Model** — Durable Object state with KV-backed `MAXOS_STATE` configuration
 
 ## Rebuild 2 — Build Order
 
@@ -79,7 +79,7 @@ Portal-OS maintains these invariants across all layers:
 - **No Deadlock** — Lanes never deadlock each other
 
 ### Tier 5: Substrate
-- **Substrate Consistent** — DO + KV state synchronized
+- **Substrate Consistent** — Durable Object + KV state synchronized
 - **KV Eventual Consistency** — System handles eventual consistency gracefully
 
 ### Tier 6: Execution
@@ -130,7 +130,6 @@ printf '%s' '{"id":"demo","type":"sim","payload":{},"identity":"a-locally-genera
 
 Identity tokens are loaded from `PORTAL_SYSTEM_TOKEN`, `PORTAL_SERVICE_TOKEN`,
 and `PORTAL_OBSERVER_TOKEN`; there are no built-in production credentials.
-
 Worker API requests use per-login HS256 JWTs. Configure the shared signing key
 as a server-only Cloudflare secret before deployment; never place it in a GUI
 environment file:
@@ -150,11 +149,13 @@ tests use a deterministic in-memory universe.
 
 ### Cloudflare deployment
 
-`wrangler.toml` declares the `PortalKernel` SQLite Durable Object migration and
-the `MAX_OS_1` service binding to the `max-os-1` Worker. Deploy MAX-OS-1 first,
-then validate and deploy this Worker:
+`wrangler.toml` declares the `PortalKernel` SQLite Durable Object migration, the
+`MAX_OS_1` service binding, and the `MAXOS_STATE` KV namespace binding. Create
+the KV namespace and replace `YOUR_KV_NAMESPACE_ID` in `wrangler.toml` before
+deploying. Deploy MAX-OS-1 first, then validate and deploy this Worker:
 
 ```bash
+npx wrangler kv namespace create MAXOS_STATE
 npm test
 npm run check
 python -m unittest discover -s tests -p '*.py'
@@ -164,7 +165,8 @@ npm run deploy
 
 The first live deploy applies the Durable Object migration. `UMBRELLA_ENFORCEMENT`
 accepts `strict`, `advisory`, or `off` and defaults safely to `strict` for any
-unknown value.
+unknown value. The supplied Phase 11 configuration uses `enabled`, which is
+therefore normalized to the safe `strict` behavior by the Worker.
 
 For Cloudflare Workers Builds, set the production **Deploy command** to
 `npm run deploy`. A Durable Object lifecycle migration cannot be applied by
@@ -194,10 +196,10 @@ npm test
 - **Rebuild 2**: Complete
 - **Architecture**: Defined
 - **Core Modules**: Initialized
-- **Next Phase**: Deploy MAX-OS-1, authenticate Wrangler, deploy planetary-max, then point the GUI environment URLs at the deployed Worker
+- **Next Phase**: Create the KV namespace, deploy MAX-OS-1, authenticate Wrangler, deploy planetary-max, then point the GUI environment URLs at the deployed Worker
 
 ---
 
-**Last Updated**: 2026-09-21
+**Last Updated**: 2026-09-22
 **Rebuild Phase**: 2  
 **Status**: Integrated architecture foundation

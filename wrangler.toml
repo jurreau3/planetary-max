@@ -2,26 +2,40 @@ name = "max-os-1"
 main = "src/index.ts"
 compatibility_date = "2024-09-22"
 
+# MAX-OS-1 service binding
 [services]
 MAX_OS_1 = { service = "max-os-1" }
 
+# PortalKernel Durable Object binding
 [[durable_objects.bindings]]
 name = "PORTAL_KERNEL"
 class_name = "PortalKernel"
 script_name = "max-os-1"
 
-[[r2_buckets]]
-binding = "MAXOS_STATE"
-bucket_name = "planetary-max-state"
+# PortalKernel uses SQLite-backed Durable Object storage.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PortalKernel"]
 
+# KV namespace for MAXOS_STATE (replaces the former R2 binding).
+# Replace this placeholder with the namespace ID created by:
+#   npx wrangler kv namespace create MAXOS_STATE
+[[kv_namespaces]]
+binding = "MAXOS_STATE"
+id = "YOUR_KV_NAMESPACE_ID"
+
+# Runtime configuration for MAX-OS Phase 11
 [vars]
 PLANETARY_MODE = "active"
 UMBRELLA_ENFORCEMENT = "enabled"
 MAX_OS_VERSION = "1"
 PORTAL_OS_PHASE = "11"
+
 KERNEL_TIMEOUT_MS = "5000"
 SUBSTRATE_TIMEOUT_MS = "3000"
+
 MAX_RETRY_ATTEMPTS = "3"
 RETRY_BASE_DELAY_MS = "50"
+
 CIRCUIT_FAILURE_THRESHOLD = "5"
 CIRCUIT_COOLDOWN_MS = "30000"
