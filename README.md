@@ -120,72 +120,86 @@ The Python adapter remains available for local kernel regression development:
 python kernel/http_adapter.py --port 8788
 ```
 
-The one-message synchronous bridge is also available directly:
-
-```bash
-export PORTAL_SERVICE_TOKEN="a-locally-generated-secret"
-printf '%s' '{"id":"demo","type":"sim","payload":{},"identity":"a-locally-generated-secret","governanceContext":{}}' \
-  | python kernel/boot.py --message
-```
-
-Identity tokens are loaded from `PORTAL_SYSTEM_TOKEN`, `PORTAL_SERVICE_TOKEN`,
-and `PORTAL_OBSERVER_TOKEN`; there are no built-in production credentials.
 Worker API requests use per-login HS256 JWTs. Configure the shared signing key
-as a server-only Cloudflare secret before deployment; never place it in a GUI
-environment file:
+as a server-only Cloudflare secret before deployment; never commit it to the
+repository:
 
 ```bash
 npx wrangler secret put IDENTITY_JWT_SECRET
 ```
 
-The token must contain `sub` and future `exp` claims. Its issuer and audience
-must match `IDENTITY_JWT_ISSUER` and `IDENTITY_JWT_AUDIENCE` in `wrangler.toml`.
-The Worker verifies the signature and claims before forwarding the original
-token through the kernel and MAX-OS-1 bindings.
+The token must contain `sub` and a future `exp` claim. Its issuer and audience
+must match `IDENTITY_JWT_ISSUER` and `IDENTITY_JWT_AUDIENCE` when those settings
+are configured.
 
-Set `MAXOS_MODULE` when running the Python adapter with an installed MAX-OS-1
-module exporting `MaxOsUnifiedOrchestrator`. Without it, Python integration
-tests use a deterministic in-memory universe.
+## Phase 11 Cloudflare deployment
 
-### Cloudflare deployment
+`wrangler.toml` is already configured with:
 
-`wrangler.toml` declares the `PortalKernel` SQLite Durable Object migration, the
-`MAX_OS_1` service binding, and the `MAXOS_STATE` KV namespace binding. Create
-the KV namespace and replace `YOUR_KV_NAMESPACE_ID` in `wrangler.toml` before
-deploying. Deploy MAX-OS-1 first, then validate and deploy this Worker:
+- `[[services]]` for the `MAX_OS_1` Worker service binding
+- `PortalKernel` Durable Object binding
+- SQLite Durable Object migration `v1`
+- `MAXOS_STATE` KV namespace `fe764b50bd0740fd9bc37d235d8b0327`
+- Phase 11 runtime variables
+
+A Durable Object migration is **not** a D1 migration. Do not run
+`wrangler d1 migrations apply`; the `[[migrations]]` declaration is applied by
+the first live Worker deployment.
+
+For a fresh checkout:
 
 ```bash
-npx wrangler kv namespace create MAXOS_STATE
-npm test
+git clone https://github.com/maxchaz2/planetary-max.git
+cd planetary-max
+npm install
+npx wrangler login
+```
+
+Validate before deployment:
+
+```bash
 npm run check
+npm test
 python -m unittest discover -s tests -p '*.py'
 npx wrangler deploy --dry-run
+```
+
+Configure the JWT secret and deploy:
+
+```bash
+npx wrangler secret put IDENTITY_JWT_SECRET
 npm run deploy
 ```
 
-The first live deploy applies the Durable Object migration. `UMBRELLA_ENFORCEMENT`
-accepts `strict`, `advisory`, or `off` and defaults safely to `strict` for any
-unknown value. The supplied Phase 11 configuration uses `enabled`, which is
-therefore normalized to the safe `strict` behavior by the Worker.
+Deploy the `max-os-1` service before this Worker. The dry run validates the
+bundle and bindings but does not apply the Durable Object migration.
 
-For Cloudflare Workers Builds, set the production **Deploy command** to
-`npm run deploy`. A Durable Object lifecycle migration cannot be applied by
-`wrangler versions upload`, which is the default preview command for
-non-production branches. Until the `v1` migration has been applied from the
-production branch, either disable non-production branch builds or give a
-separate staging Worker a full `wrangler deploy --env staging` flow; do not
-remove the migration to make a preview upload pass.
+## Introspection validation
+
+After deployment, set a valid JWT in `TOKEN` and use the Worker URL in
+`WORKER_URL`:
+
+```bash
+export WORKER_URL="https://max-os-1.<account>.workers.dev"
+export TOKEN="<signed-jwt>"
+
+curl -fsS "$WORKER_URL/health"
+curl -fsS -H "Authorization: Bearer $TOKEN" "$WORKER_URL/universe/state"
+curl -fsS -H "Authorization: Bearer $TOKEN" "$WORKER_URL/api/introspection/umbrella/enforcement"
+curl -fsS -H "Authorization: Bearer $TOKEN" "$WORKER_URL/api/introspection/substrate/state"
+curl -fsS -X POST -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"changes":{"resources":1}}' \
+  "$WORKER_URL/universe/tick"
+```
+
+`UMBRELLA_ENFORCEMENT` accepts `strict`, `advisory`, or `off`. The configured
+value `enabled` intentionally fails closed to `strict`.
 
 ## Development
 
-### Testing Invariants
 ```bash
 python -c "from kernel.invariants import InvariantChecker; InvariantChecker().check_all()"
-```
-
-### Rebuild 2 Integration
-
-```bash
 python tests/integration_rebuild2.py
 npm run check
 npm test
@@ -196,10 +210,10 @@ npm test
 - **Rebuild 2**: Complete
 - **Architecture**: Defined
 - **Core Modules**: Initialized
-- **Next Phase**: Create the KV namespace, deploy MAX-OS-1, authenticate Wrangler, deploy planetary-max, then point the GUI environment URLs at the deployed Worker
+- **Next Phase**: Deploy MAX-OS-1, authenticate Wrangler, deploy planetary-max, then point the GUI environment URLs at the deployed Worker
 
 ---
 
-**Last Updated**: 2026-09-22
+**Last Updated**: 2026-09-22  
 **Rebuild Phase**: 2  
 **Status**: Integrated architecture foundation
