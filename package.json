@@ -6,7 +6,9 @@
     "build": "tsc",
     "check": "tsc --noEmit",
     "test": "vitest run --reporter=verbose",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "generate:token": "node scripts/generate-token.mjs",
+    "verify:token": "node scripts/verify-token.mjs"
   },
   "dependencies": {
     "hono": "^4.13.7"
