@@ -1,41 +1,33 @@
-name = 'max-os-1'
-main = "src/index.ts"
+name = "planetary-max"
+main = "dist/index.js"
 compatibility_date = "2024-09-22"
 
-# MAX-OS-1 service binding
-[[services]]
-binding = "MAX_OS_1"
-service = "max-os-1"
+# Ensure Wrangler deploy uses the same Worker name CI expects.
+# This prevents Cloudflare Pages from overriding the name and breaking KV binding resolution.
 
-# PortalKernel Durable Object binding
-[[durable_objects.bindings]]
-name = "PORTAL_KERNEL"
-class_name = "PortalKernel"
-script_name = "max-os-1"
+[durable_objects]
+bindings = [
+  { name = "PORTAL_KERNEL", class_name = "PortalKernel" }
+]
 
-# PortalKernel SQLite storage migration.
-# Durable Object migrations are applied by the first live Worker deployment;
-# this is not a D1 migration.
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["PortalKernel"]
+[kv_namespaces]
+bindings = [
+  { binding = "MAXOS_STATE", id = "fe764b50bd0740fd9bc37d235d8b0327" }
+]
 
-# KV namespace for MAXOS_STATE
-[[kv_namespaces]]
-binding = "MAXOS_STATE"
-id = "fe764b50bd0740fd9bc37d235d8b0327"
+[services]
+bindings = [
+  { name = "MAX_OS_1", service = "max-os-1" }
+]
 
 [vars]
 PLANETARY_MODE = "active"
 UMBRELLA_ENFORCEMENT = "enabled"
 MAX_OS_VERSION = "1"
 PORTAL_OS_PHASE = "11"
-
 KERNEL_TIMEOUT_MS = "5000"
 SUBSTRATE_TIMEOUT_MS = "3000"
-
 MAX_RETRY_ATTEMPTS = "3"
 RETRY_BASE_DELAY_MS = "50"
-
 CIRCUIT_FAILURE_THRESHOLD = "5"
 CIRCUIT_COOLDOWN_MS = "30000"
