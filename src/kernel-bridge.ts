@@ -1,5 +1,3 @@
-import type { KernelResult } from './index';
-
 export type UmbrellaMode = 'strict' | 'advisory' | 'off';
 
 export type KernelEnvelope = {
@@ -118,7 +116,7 @@ export function resultResponse(result: KernelResult, upstreamStatus: number): Re
 
 export function failureResponse(code: string, message: string, status: number): Response { return Response.json({ ok: false, error: { code, message } }, { status }); }
 
-function failureResult(code: string, message: string, envelope?: KernelEnvelope): KernelFailure { return { ok: false, error: { code, message }, ...(envelope ? { meta: { messageId: envelope.id, type: envelope.type } } : {}) }; }
+function failureResult(code: string, message: string, envelope?: KernelEnvelope): KernelFailure { return { ok: false, error: { code, message }, ...(envelope ? { meta: { messageId: envelope.id, type: envelope.type, governance: defaultGovernance(resolveEnvelopeMode(envelope)) } } : {}) }; }
 function errorStatus(code: string, upstreamStatus = 500): number { if (code === 'UNAUTHENTICATED') return 401; if (code === 'FORBIDDEN') return 403; if (code === 'INVALID_MESSAGE' || code === 'INVALID_JSON') return 400; if (code === 'INVALID_KERNEL_RESPONSE') return 502; return upstreamStatus >= 400 ? upstreamStatus : 500; }
 function bearerToken(header: string | undefined): string | null { const match = /^Bearer\s+(.+)$/i.exec(header ?? ''); return match?.[1]?.trim() || null; }
 
@@ -139,6 +137,7 @@ function decodeJwtPart(value: string): Record<string, unknown> { const decoded: 
 function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> { const base64 = value.replace(/-/g, '+').replace(/_/g, '/'); const decoded = atob(base64 + '='.repeat((4 - base64.length % 4) % 4)); const bytes = new Uint8Array(new ArrayBuffer(decoded.length)); for (let index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index); return bytes; }
 function jwtAudienceIncludes(value: unknown, expected: string): boolean { return value === expected || (Array.isArray(value) && value.some((entry) => entry === expected)); }
 export function resolveUmbrellaMode(value: string | undefined): UmbrellaMode { return value === 'advisory' || value === 'off' || value === 'strict' ? value : 'strict'; }
+function resolveEnvelopeMode(envelope: KernelEnvelope): UmbrellaMode { return resolveUmbrellaMode(typeof envelope.governanceContext.umbrellaMode === 'string' ? envelope.governanceContext.umbrellaMode : undefined); }
 function defaultGovernance(mode: UmbrellaMode): GovernanceMetadata { return { mode, decision: mode === 'off' ? 'bypassed' : mode === 'advisory' ? 'advisory' : 'allowed', deltas: [] }; }
-function isGovernanceMetadata(value: unknown): value is GovernanceMetadata { if (!isRecord(value)) return false; return (value.mode === 'strict' || value.mode === 'advisory' || value.mode === 'off') && (value.decision === 'allowed' || value.decision === 'denied' || value.decision === 'advisory' || value.decision === 'bypassed') && Array.isArray(value.deltas) && value.deltas.every(isRecord); }
+function isGovernanceMetadata(value: unknown): value is GovernanceMetadata { if (!isRecord(value)) return false; return (value.mode === 'strict' || value.mode === 'advisory' || value.mode === 'off') && (value.decision === 'allowed' || value.decision === 'denied' || value.decision === 'advisory' || value.decision === 'bypassed'); }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
