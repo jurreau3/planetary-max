@@ -2,22 +2,21 @@ name = "planetary-max"
 main = "dist/index.js"
 compatibility_date = "2024-09-22"
 
-# Ensure Wrangler deploy uses the same Worker name CI expects.
-# This prevents Cloudflare Pages from overriding the name and breaking KV binding resolution.
-
 [durable_objects]
 bindings = [
   { name = "PORTAL_KERNEL", class_name = "PortalKernel" }
 ]
 
-[kv_namespaces]
-bindings = [
+[exports.PortalKernel]
+type = "durable-object"
+storage = "sqlite"
+
+kv_namespaces = [
   { binding = "MAXOS_STATE", id = "fe764b50bd0740fd9bc37d235d8b0327" }
 ]
 
-[services]
-bindings = [
-  { name = "MAX_OS_1", service = "max-os-1" }
+services = [
+  { binding = "MAX_OS_1", service = "max-os-1" }
 ]
 
 [vars]
