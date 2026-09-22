@@ -13,17 +13,18 @@ name = "PORTAL_KERNEL"
 class_name = "PortalKernel"
 script_name = "max-os-1"
 
-# PortalKernel uses SQLite-backed Durable Object storage.
+# PortalKernel SQLite storage migration.
+# Durable Object migrations are applied by the first live Worker deployment;
+# this is not a D1 migration.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["PortalKernel"]
 
-# KV namespace for MAXOS_STATE (replaces the former R2 binding).
+# KV namespace for MAXOS_STATE
 [[kv_namespaces]]
 binding = "MAXOS_STATE"
 id = "fe764b50bd0740fd9bc37d235d8b0327"
 
-# Runtime configuration for MAX-OS Phase 11
 [vars]
 PLANETARY_MODE = "active"
 UMBRELLA_ENFORCEMENT = "enabled"
