@@ -7,8 +7,7 @@
     "check": "tsc --noEmit",
     "test": "vitest run --reporter=verbose",
     "deploy": "wrangler deploy",
-    "generate:token": "node scripts/generate-token.mjs",
-    "verify:token": "node scripts/verify-token.mjs"
+    "generate:jwt": "node scripts/generate-jwt.mjs"
   },
   "dependencies": {
     "hono": "^4.13.7"
