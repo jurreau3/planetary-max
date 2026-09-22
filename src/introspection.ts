@@ -20,6 +20,8 @@ export type IntrospectionKind =
   | 'sim.behavior'
   | 'identity.timeline'
   | 'windows.focus'
+  | 'windows.state'
+  | 'windows.timeline'
   | 'umbrella.enforcement'
   | 'kernel.heatmap'
   | 'tec.pipeline'
@@ -32,6 +34,8 @@ const INTROSPECTION_ROUTES: ReadonlyArray<readonly [string, IntrospectionKind]> 
   ['/api/introspection/sim/behavior', 'sim.behavior'],
   ['/api/introspection/identity/timeline', 'identity.timeline'],
   ['/api/introspection/windows/focus', 'windows.focus'],
+  ['/api/introspection/windows/state', 'windows.state'],
+  ['/api/introspection/windows/timeline', 'windows.timeline'],
   ['/api/introspection/umbrella/enforcement', 'umbrella.enforcement'],
   ['/api/introspection/kernel/heatmap', 'kernel.heatmap'],
   ['/api/introspection/tec/pipeline', 'tec.pipeline'],
