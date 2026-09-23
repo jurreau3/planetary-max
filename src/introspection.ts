@@ -26,6 +26,10 @@ export type IntrospectionKind =
   | "messages"
   | "logs"
   | "inference"
+  | "quantum.state"
+  | "quantum.branches"
+  | "quantum.curvature"
+  | "quantum.signature"
   | "institute.canon"
   | "institute.truths"
   | "institute.timeline"
@@ -101,6 +105,10 @@ export function attachIntrospectionRoutes(
   app.get("/api/introspection/messages", introspectionHandler("messages"));
   app.get("/api/introspection/logs", introspectionHandler("logs"));
   app.get("/api/introspection/inference", introspectionHandler("inference"));
+  app.get("/api/introspection/quantum/state", introspectionHandler("quantum.state"));
+  app.get("/api/introspection/quantum/branches", introspectionHandler("quantum.branches"));
+  app.get("/api/introspection/quantum/curvature", introspectionHandler("quantum.curvature"));
+  app.get("/api/introspection/quantum/signature", introspectionHandler("quantum.signature"));
   app.get("/api/introspection/institute/canon", introspectionHandler("institute.canon"));
   app.get("/api/introspection/institute/truths", introspectionHandler("institute.truths"));
   app.get("/api/introspection/institute/timeline", introspectionHandler("institute.timeline"));

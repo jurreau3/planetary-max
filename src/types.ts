@@ -338,14 +338,6 @@ export type PlanetaryGovernanceContext = Readonly<{
   collapseRules: Readonly<Record<string, unknown>>;
 }>;
 
-export type QuantumBranch = Readonly<{
-  id: string;
-  node: string;
-  probability: number;
-  curvature: number;
-  signature: string;
-}>;
-
 export type PlanetaryQuantumState = Readonly<{
   branches: ReadonlyArray<QuantumBranch>;
   globalCurvature: number;

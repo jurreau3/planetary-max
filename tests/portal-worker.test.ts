@@ -189,9 +189,8 @@ function planetaryNode(
     }],
     quantumBranches: [{
       id: `branch-${nodeId}`,
-      node: nodeId,
       probability: 0.8,
-      curvature: 0.3,
+      stateDelta: { node: nodeId, curvature: 0.3 },
       signature: quantumSignature,
     }],
     canon: {
@@ -812,6 +811,10 @@ describe('Planetary Mode', () => {
             globalSignature: 'quantum-stable',
             globalCurvature: 0.3,
             collapsePolicy: 'governed',
+            branches: [expect.objectContaining({
+              id: 'planetary:quantum-stable',
+              stateDelta: { node: 'planetary', curvature: 0.3 },
+            })],
           },
           identities: { 'identity-1': { signature: 'identity-stable', curvature: 0.4 } },
         },
