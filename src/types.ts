@@ -1,62 +1,106 @@
+//
+// MAX‑Institute Unified Type Surface
+// Portal‑OS Wing
+// Planetary‑MAX Quantum Substrate
+//
+
 // -------------------------------------------------------------
-// Core Bindings
+// Core Kernel Types
 // -------------------------------------------------------------
-export type Bindings = {
-  PLANETARY_MODE?: string;
-  UMBRELLA_ENFORCEMENT?: string;
-  MAX_OS_1: Fetcher;
+
+export type Bindings = Record<string, unknown>;
+
+export type KernelLane = "sim" | "identity" | "windows" | "tec" | "umbrella";
+
+export type KernelEnvelope = {
+  lane: KernelLane;
+  payload: unknown;
+  identity?: string | null;
+  governance?: GovernanceMetadata | null;
+};
+
+export type KernelResult = {
+  ok: boolean;
+  status: number;
+  body: unknown;
+  governance?: GovernanceMetadata | null;
+};
+
+export type PortalKernelState = {
+  sim: SimSubstrateState;
+  windows: Record<string, SimWindowState>;
+  identity: Record<string, SimAgentState>;
+  tec: Record<string, SimTecTaskState>;
+  substrate: SimSubstrateState;
 };
 
 // -------------------------------------------------------------
 // Governance Types
 // -------------------------------------------------------------
-export type GovernanceDecision = "allowed" | "denied";
+
+export type UmbrellaMode = "strict" | "advisory" | "off";
 
 export type GovernanceMetadata = {
-  id: string;
-  kind: "policy" | "constraint" | "signal";
-  source: "institute" | "portal" | "planetary" | "market";
-  decision: GovernanceDecision;
-  createdAt: string;
-  updatedAt?: string;
-  tags?: string[];
+  mode: UmbrellaMode;
+  decision: "allow" | "deny" | "advise";
+  reason?: string;
 };
 
 export type GovernanceInference = {
-  metadata: GovernanceMetadata[];
-  curvature: number;
+  confidence: number;
+  advisory?: string;
 };
 
 // -------------------------------------------------------------
-// Kernel Types
+// Simulation Types
 // -------------------------------------------------------------
-export type KernelEnvelope = {
-  type: string;
-  payload: Record<string, unknown>;
-  identity: string;
-  governanceContext: Record<string, unknown>;
-  enforcement?: string;
-};
 
-export type KernelLane = {
+export type SimEventType =
+  | "agent.move"
+  | "agent.identity"
+  | "window.focus"
+  | "window.state"
+  | "tec.task"
+  | "substrate.adjust";
+
+export type SimEvent = {
   id: string;
-  data: Record<string, unknown>;
+  type: SimEventType;
+  identityId?: string;
+  windowId?: string;
+  payload?: unknown;
 };
 
-export type KernelResult = {
-  ok: boolean;
-  lanes: KernelLane[];
-  signature: string;
-  curvature: number;
+export type SimAgentState = {
+  id: string;
+  position?: { x: number; y: number };
+  identity?: string;
+};
+
+export type SimWindowState = {
+  id: string;
+  focusHistory: string[];
+  state: Record<string, unknown>;
+};
+
+export type SimTecTaskState = {
+  id: string;
+  kind: string;
+  progress: number;
+};
+
+export type SimSubstrateState = {
+  stability: number;
+};
+
+export type SimTickDiff = {
+  deltas: Record<string, unknown>;
+  events: SimEvent[];
 };
 
 // -------------------------------------------------------------
 // Quantum Types
 // -------------------------------------------------------------
-export type QuantumCollapsePolicy =
-  | "deterministic"
-  | "probabilistic"
-  | "governed";
 
 export type QuantumBranch = {
   id: string;
@@ -65,6 +109,11 @@ export type QuantumBranch = {
   signature: string;
 };
 
+export type QuantumCollapsePolicy =
+  | "deterministic"
+  | "probabilistic"
+  | "governed";
+
 export type QuantumOverlay = {
   branches: Readonly<QuantumBranch[]>;
   curvature: number;
@@ -72,198 +121,163 @@ export type QuantumOverlay = {
   collapsePolicy: QuantumCollapsePolicy;
 };
 
+export type QuantumGovernanceContext = {
+  mode: UmbrellaMode;
+  identity?: string;
+};
+
 export type QuantumSignature = string;
 
 export type QuantumState = {
-  overlay: QuantumOverlay;
-  collapsed: Record<string, unknown>;
-};
-
-export type QuantumGovernanceContext = {
-  metadata: GovernanceMetadata[];
-  collapsePolicy: QuantumCollapsePolicy;
-};
-
-// -------------------------------------------------------------
-// Inference Types
-// -------------------------------------------------------------
-export type InferenceFactKind =
-  | "quantum"
-  | "simulation"
-  | "identity"
-  | "planetary"
-  | "institute";
-
-export type InferenceFact = {
-  kind: InferenceFactKind;
-  data: Record<string, unknown>;
-};
-
-export type InferenceHypothesis = {
-  id: string;
-  confidence: number;
-  facts: InferenceFact[];
-};
-
-export type InferenceRecommendationTarget =
-  | "quantum"
-  | "simulation"
-  | "identity"
-  | "planetary"
-  | "institute";
-
-export type InferenceRecommendation = {
-  target: InferenceRecommendationTarget;
-  action: string;
-  rationale: string;
-};
-
-export type InferenceArtifacts = {
-  overlay: QuantumOverlay;
-  facts: InferenceFact[];
-};
-
-// -------------------------------------------------------------
-// Institute Types
-// -------------------------------------------------------------
-export type InstituteTruth = {
-  id: string;
-  confidence: number;
-  data: Record<string, unknown>;
-};
-
-export type InstituteTruthFormation = {
-  truths: InstituteTruth[];
-  stability: number;
-};
-
-export type InstituteInferenceFact = InferenceFact;
-
-export type InstituteInferenceHypothesis = InferenceHypothesis;
-
-export type InstituteQuantumBranch = QuantumBranch;
-
-export type InstituteSimulationDelta = Record<string, unknown>;
-
-export type InstituteState = {
-  truths: InstituteTruth[];
-  hypotheses: InstituteInferenceHypothesis[];
-  stability: number;
+  overlay: QuantumOverlay | null;
 };
 
 // -------------------------------------------------------------
 // Planetary Types
 // -------------------------------------------------------------
+
 export type PlanetaryIdentity = {
   id: string;
   signature: string;
 };
 
-export type PlanetarySubstrate = {
-  curvature: number;
-  signature: string;
-};
-
-export type PlanetaryQuantumState = QuantumState;
-
-export type PlanetaryGovernanceContext = {
-  metadata: GovernanceMetadata[];
-};
-
 export type PlanetaryNodeSnapshot = {
   id: string;
-  state: Record<string, unknown>;
-};
-
-export type PlanetaryAnomaly = {
-  id: string;
-  description: string;
-};
-
-export type PlanetaryCanon = {
-  id: string;
-  truths: InstituteTruth[];
-};
-
-export type PlanetaryState = {
   identity: PlanetaryIdentity;
-  substrate: PlanetarySubstrate;
   quantum: PlanetaryQuantumState;
+  substrate: PlanetarySubstrate;
   canon: PlanetaryCanon;
 };
 
-export type PlanetarySynchronization = {
-  state: PlanetaryState;
-  anomalies: PlanetaryAnomaly[];
+export type PlanetaryQuantumState = {
+  overlay: QuantumOverlay | null;
 };
 
-// -------------------------------------------------------------
-// Simulation Types
-// -------------------------------------------------------------
-export type SimEventType =
-  | "agent.move"
-  | "agent.interact"
-  | "window.update"
-  | "substrate.update";
-
-export type SimEvent = {
-  id: string;
-  type: SimEventType;
-  payload: Record<string, unknown>;
+export type PlanetarySubstrate = {
+  stability: number;
 };
 
-export type SimAgentState = {
-  id: string;
-  position: Record<string, number>;
-  traits: Record<string, unknown>;
-};
-
-export type SimWindowState = {
-  id: string;
-  focus: boolean;
-  timeline: string[];
-};
-
-export type SimSubstrateState = {
-  curvature: number;
+export type PlanetaryCanon = {
+  truths: InstituteTruth[];
   signature: string;
 };
 
-export type SimTickDiff = {
-  events: SimEvent[];
-  agents: SimAgentState[];
-  windows: SimWindowState[];
-  substrate: SimSubstrateState;
+export type PlanetaryGovernanceContext = {
+  mode: UmbrellaMode;
+  reason?: string;
+};
+
+export type PlanetaryState = {
+  nodes: PlanetaryNodeSnapshot[];
+};
+
+export type PlanetarySynchronization = {
+  branches: QuantumBranch[];
+  explicitSync: boolean;
+};
+
+export type PlanetaryAnomaly = {
+  kind: string;
+  details?: string;
 };
 
 // -------------------------------------------------------------
-// Introspection Types
+// Institute Types
 // -------------------------------------------------------------
-export type IntrospectionKind =
-  | "inference"
-  | "sim.behavior"
-  | "identity.timeline"
-  | "windows.focus"
-  | "windows.state"
-  | "windows.timeline"
-  | "tec.pipeline"
-  | "substrate.state"
-  | "messages"
-  | "logs"
-  | "quantum.state"
-  | "quantum.branches"
-  | "quantum.curvature"
-  | "quantum.signature"
-  | "umbrella.enforcement"
-  | "kernel.heatmap"
-  | "institute.canon"
-  | "institute.truths"
-  | "institute.timeline"
-  | "institute.stability"
-  | "institute.signature"
-  | "institute.timelines"
-  | "planetary.identity"
-  | "planetary.substrate"
-  | "planetary.quantum"
-  | "planetary.canon"
-  | "planetary.governance";
+
+export type EpistemicEventAction =
+  | "observe"
+  | "infer"
+  | "update"
+  | "reject";
+
+export type EpistemicEvent = {
+  id: string;
+  action: EpistemicEventAction;
+  payload: unknown;
+  time: number;
+};
+
+export type EpistemicTimeline = EpistemicEvent[];
+
+export type InstituteInferenceFact = {
+  id: string;
+  kind: InferenceFactKind;
+  confidence: number;
+  payload: unknown;
+};
+
+export type InstituteInferenceHypothesis = {
+  id: string;
+  facts: InstituteInferenceFact[];
+  confidence: number;
+};
+
+export type InstituteQuantumBranch = QuantumBranch;
+
+export type InstituteSimulationDelta = SimTickDiff;
+
+export type InstituteTruth = {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+  payload: unknown;
+  stability: number;
+};
+
+export type InstituteTruthFormation = {
+  truth: InstituteTruth;
+  advisory?: string;
+};
+
+export type InstituteCanon = {
+  truths: InstituteTruth[];
+  signature: string;
+};
+
+export type InstituteState = {
+  canon: InstituteCanon;
+  timeline: EpistemicTimeline;
+};
+
+// -------------------------------------------------------------
+// Inference Types
+// -------------------------------------------------------------
+
+export type InferenceFactKind =
+  | "behavior"
+  | "identity"
+  | "window"
+  | "tec"
+  | "substrate"
+  | "governance";
+
+export type InferenceFact = {
+  id: string;
+  kind: InferenceFactKind;
+  payload: unknown;
+};
+
+export type InferenceHypothesis = {
+  id: string;
+  facts: InferenceFact[];
+  confidence: number;
+};
+
+export type InferenceRecommendationTarget =
+  | "substrate"
+  | "identity"
+  | "window"
+  | "tec";
+
+export type InferenceRecommendation = {
+  id: string;
+  target: InferenceRecommendationTarget;
+  payload: unknown;
+};
+
+export type InferenceArtifacts = {
+  facts: InferenceFact[];
+  hypotheses: InferenceHypothesis[];
+  recommendations: InferenceRecommendation[];
+};
