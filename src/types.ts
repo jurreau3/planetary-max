@@ -2,7 +2,93 @@ export type UmbrellaMode = "strict" | "advisory" | "off";
 
 export type GovernanceDecision = "allowed" | "denied" | "advisory" | "bypassed";
 
-export type GovernanceContext = Readonly<Record<string, unknown>>;
+export type InferenceFactKind = "agent" | "window" | "substrate" | "governance" | "tec";
+
+export type InferenceFact = Readonly<{
+  id: string;
+  kind: InferenceFactKind;
+  subjectId: string;
+  at: number;
+  data: Readonly<Record<string, unknown>>;
+}>;
+
+export type InferenceHypothesis = Readonly<{
+  id: string;
+  description: string;
+  confidence: number;
+  supportingFacts: ReadonlyArray<string>;
+  tags: ReadonlyArray<string>;
+}>;
+
+export type InferenceRecommendationTarget =
+  | "governance"
+  | "simulation"
+  | "substrate"
+  | "identity"
+  | "tec";
+
+export type InferenceRecommendation = Readonly<{
+  id: string;
+  target: InferenceRecommendationTarget;
+  action: string;
+  rationale: string;
+  confidence: number;
+  relatedHypotheses: ReadonlyArray<string>;
+}>;
+
+export type InferenceArtifacts = Readonly<{
+  facts: ReadonlyArray<InferenceFact>;
+  hypotheses: ReadonlyArray<InferenceHypothesis>;
+  recommendations: ReadonlyArray<InferenceRecommendation>;
+}>;
+
+export type GovernanceInference = Readonly<{
+  hypotheses: ReadonlyArray<InferenceHypothesis>;
+  recommendations: ReadonlyArray<InferenceRecommendation>;
+}>;
+
+export type QuantumCollapsePolicy = "deterministic" | "probabilistic" | "governed";
+
+export type QuantumBranch = Readonly<{
+  id: string;
+  probability: number;
+  stateDelta: Readonly<Record<string, unknown>>;
+  signature: string;
+}>;
+
+export type QuantumState = Readonly<{
+  id: string;
+  branches: ReadonlyArray<QuantumBranch>;
+  collapsePolicy: QuantumCollapsePolicy;
+  meta: Readonly<Record<string, unknown>>;
+}>;
+
+export type QuantumSignature = Readonly<{
+  id: string;
+  curvature: number;
+  influence: Readonly<Record<string, number>>;
+}>;
+
+export type QuantumGovernanceContext = Readonly<{
+  allowedBranches: ReadonlyArray<string>;
+  forcedCollapse?: string;
+  curvatureLimit?: number;
+  probabilityBias?: Readonly<Record<string, number>>;
+}>;
+
+export type QuantumOverlay = Readonly<{
+  state: QuantumState;
+  curvature: Readonly<Record<string, number>>;
+  signatures: ReadonlyArray<QuantumSignature>;
+  selectedBranchId: string;
+}>;
+
+export type GovernanceContext = Readonly<
+  Record<string, unknown> & {
+    inference?: GovernanceInference;
+    quantum?: QuantumGovernanceContext;
+  }
+>;
 
 export type KernelEnvelope = Readonly<{
   id: string;
@@ -17,6 +103,7 @@ export type GovernanceMetadata = Readonly<{
   decision: GovernanceDecision;
   rationale?: string;
   deltas: ReadonlyArray<Readonly<Record<string, unknown>>>;
+  inference?: GovernanceInference;
 }>;
 
 export type KernelLane = Readonly<{
@@ -77,6 +164,9 @@ export type SimEventType =
   | "window.layout.change"
   | "substrate.shift"
   | "substrate.anomaly"
+  | "substrate.quantum.shift"
+  | "substrate.quantum.branch"
+  | "substrate.quantum.collapse"
   | "tec.task.created"
   | "tec.task.completed";
 

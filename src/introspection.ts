@@ -5,11 +5,13 @@ import type {
   InstituteState,
   PlanetaryState,
   PortalKernelState,
+  QuantumOverlay,
   SimEvent,
   SimTecTaskState,
   SimTickDiff,
   SimWindowState,
 } from "./types";
+import { runInference } from "./inference";
 
 export type IntrospectionKind =
   | "sim.behavior"
@@ -40,6 +42,7 @@ type SimulationIntrospectionState = PortalKernelState & Readonly<{
   eventLog: ReadonlyArray<SimEvent>;
   diffLog: ReadonlyArray<SimTickDiff>;
   tecTasks: Readonly<Record<string, SimTecTaskState>>;
+  quantum: QuantumOverlay;
 }>;
 
 const KERNEL_OBJECT_NAME = "portal-kernel";
@@ -77,6 +80,10 @@ const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<I
   "messages",
   "logs",
   "inference",
+  "quantum.state",
+  "quantum.branches",
+  "quantum.curvature",
+  "quantum.signature",
 ]);
 
 export function attachIntrospectionRoutes(
@@ -325,14 +332,12 @@ function introspectionResult(
   if (kind === "messages") return state.eventLog;
   if (kind === "logs") return state.diffLog;
   if (kind === "inference") {
-    return {
-      deterministic: true,
-      tick: state.tick,
-      processedEvents: state.eventLog.length,
-      reversibleDiffs: state.diffLog.length,
-      lastDiff: state.diffLog.at(-1) ?? null,
-    };
+    return runInference({ simulation: state, quantum: state.quantum });
   }
+  if (kind === "quantum.state") return state.quantum.state;
+  if (kind === "quantum.branches") return state.quantum.state.branches;
+  if (kind === "quantum.curvature") return state.quantum.curvature;
+  if (kind === "quantum.signature") return state.quantum.signatures;
   return {};
 }
 
@@ -381,7 +386,8 @@ function isSimulationState(value: unknown): value is SimulationIntrospectionStat
     typeof value.tick === "number" &&
     Array.isArray(value.eventLog) &&
     Array.isArray(value.diffLog) &&
-    isRecord(value.tecTasks)
+    isRecord(value.tecTasks) &&
+    isRecord(value.quantum)
   );
 }
 

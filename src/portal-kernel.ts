@@ -44,6 +44,7 @@ type SimulationAuxiliaryState = Readonly<{
   eventLog: ReadonlyArray<SimEvent>;
   diffLog: ReadonlyArray<SimTickDiff>;
   tecTasks: Readonly<Record<string, SimTecTaskState>>;
+  quantum: QuantumOverlay;
 }>;
 
 type SimulationSnapshot = PortalKernelState & SimulationAuxiliaryState;
@@ -80,8 +81,15 @@ type TickSuccess = Readonly<{
     tick: number;
     diff: SimTickDiff;
     snapshot: PortalKernelState;
+    quantum: QuantumOverlay;
   }>;
   sim: SimulationMeta;
+}>;
+
+type QuantumTickOptions = Readonly<{
+  seed?: string | number;
+  collapsePolicy?: QuantumCollapsePolicy;
+  governanceContext?: Readonly<Record<string, unknown>>;
 }>;
 
 type AppliedEvent = Readonly<{
@@ -113,6 +121,9 @@ const SIM_EVENT_TYPES: ReadonlySet<string> = new Set<string>([
   "window.layout.change",
   "substrate.shift",
   "substrate.anomaly",
+  "substrate.quantum.shift",
+  "substrate.quantum.branch",
+  "substrate.quantum.collapse",
   "tec.task.created",
   "tec.task.completed",
 ]);
@@ -151,7 +162,7 @@ export class PortalKernel {
     }
     if (url.pathname === "/kernel/sim/tick") {
       return request.method === "POST"
-        ? this.simulationTickResponse()
+        ? this.simulationTickResponse(request)
         : failureResponse("METHOD_NOT_ALLOWED", "Simulation ticks require POST", 405);
     }
     if (url.pathname === "/kernel/institute/state") {
@@ -257,7 +268,12 @@ export class PortalKernel {
     }
 
     if (SIM_TICK_MESSAGE_TYPES.has(envelope.type)) {
-      const tick: TickSuccess | SimulationFailure = await this.tickSimulation();
+      const options: QuantumTickOptions | SimulationFailure = quantumTickOptions(
+        envelope.payload,
+        envelope.governanceContext,
+      );
+      if (isSimulationFailure(options)) return simulationFailureResponse(options);
+      const tick: TickSuccess | SimulationFailure = await this.tickSimulation(options);
       if (isSimulationFailure(tick)) return simulationFailureResponse(tick);
       const entityId: string =
         typeof envelope.payload.entityId === "string"
@@ -369,8 +385,22 @@ export class PortalKernel {
       : simulationFailureResponse(outcome);
   }
 
-  private async simulationTickResponse(): Promise<Response> {
-    const tick: TickSuccess | SimulationFailure = await this.tickSimulation();
+  private async simulationTickResponse(request: Request): Promise<Response> {
+    let body: Readonly<Record<string, unknown>> = {};
+    if (request.body !== null) {
+      const value: Record<string, unknown> | Response = await readJsonObject(
+        request,
+        "Simulation tick options must be a JSON object",
+      );
+      if (value instanceof Response) return value;
+      body = value;
+    }
+    const context: Readonly<Record<string, unknown>> = isRecord(body.governanceContext)
+      ? body.governanceContext
+      : {};
+    const options: QuantumTickOptions | SimulationFailure = quantumTickOptions(body, context);
+    if (isSimulationFailure(options)) return simulationFailureResponse(options);
+    const tick: TickSuccess | SimulationFailure = await this.tickSimulation(options);
     return isSimulationFailure(tick)
       ? simulationFailureResponse(tick)
       : Response.json({ ok: true, result: tick.result, meta: { sim: tick.sim } });
@@ -548,7 +578,9 @@ export class PortalKernel {
     );
   }
 
-  private async tickSimulation(): Promise<TickSuccess | SimulationFailure> {
+  private async tickSimulation(
+    options: QuantumTickOptions = {},
+  ): Promise<TickSuccess | SimulationFailure> {
     return this.state.storage.transaction(
       async (
         transaction: DurableObjectTransaction,
@@ -597,14 +629,46 @@ export class PortalKernel {
           [...diffLog, diff],
           MAX_DIFF_LOG_ENTRIES,
         );
+        let quantum: QuantumOverlay;
+        try {
+          const classical = {
+            ...next,
+            eventLog: nextEventLog,
+            diffLog: nextDiffLog,
+            tecTasks,
+          };
+          const inference = runInference({ simulation: classical });
+          quantum = generateQuantumOverlay({
+            classical,
+            seed: options.seed ?? `tick:${next.tick}`,
+            collapsePolicy: options.collapsePolicy,
+            governanceContext: options.governanceContext,
+            governanceMode: resolveMode(this.env.UMBRELLA_ENFORCEMENT),
+            inference,
+          });
+        } catch (error) {
+          return simulationFailure(
+            "QUANTUM_COLLAPSE_DENIED",
+            error instanceof Error ? error.message : "Quantum collapse failed",
+            403,
+          );
+        }
+        if (jsonSize(quantum) > MAX_STORAGE_VALUE_BYTES) {
+          return simulationFailure(
+            "SIMULATION_STATE_LIMIT",
+            "Quantum overlay exceeds the durable storage limit",
+            413,
+          );
+        }
 
         await transaction.put(SIMULATION_STATE_KEY, next);
         await transaction.put(SIMULATION_EVENT_LOG_KEY, nextEventLog);
         await transaction.put(SIMULATION_DIFF_LOG_KEY, nextDiffLog);
         await transaction.put(SIMULATION_TEC_TASKS_KEY, tecTasks);
+        await transaction.put(QUANTUM_STATE_KEY, quantum);
 
         return {
-          result: { tick: next.tick, diff, snapshot: next },
+          result: { tick: next.tick, diff, snapshot: next, quantum },
           sim: {
             entityId: "simulation",
             kind: "simulation",
@@ -616,20 +680,28 @@ export class PortalKernel {
   }
 
   private async readSimulationSnapshot(): Promise<SimulationSnapshot> {
-    const [state, eventLog, diffLog, tecTasks] = await Promise.all([
+    const [storedState, eventLog, diffLog, tecTasks, storedQuantum] = await Promise.all([
       this.state.storage.get<PortalKernelState>(SIMULATION_STATE_KEY),
       this.state.storage.get<ReadonlyArray<SimEvent>>(SIMULATION_EVENT_LOG_KEY),
       this.state.storage.get<ReadonlyArray<SimTickDiff>>(SIMULATION_DIFF_LOG_KEY),
       this.state.storage.get<Readonly<Record<string, SimTecTaskState>>>(
         SIMULATION_TEC_TASKS_KEY,
       ),
+      this.state.storage.get<QuantumOverlay>(QUANTUM_STATE_KEY),
     ]);
-    return {
-      ...(state ?? initialSimulationState()),
+    const state: PortalKernelState = storedState ?? initialSimulationState();
+    const base = {
+      ...state,
       eventLog: eventLog ?? [],
       diffLog: diffLog ?? [],
       tecTasks: tecTasks ?? {},
     };
+    const quantum: QuantumOverlay = storedQuantum ?? generateQuantumOverlay({
+      classical: base,
+      seed: `tick:${state.tick}`,
+      inference: runInference({ simulation: base }),
+    });
+    return { ...base, quantum };
   }
 
   private async readUniverse(): Promise<UniverseState> {
@@ -801,6 +873,45 @@ function validateSimulationEvent(
   });
 }
 
+function quantumTickOptions(
+  value: Readonly<Record<string, unknown>>,
+  governanceContext: Readonly<Record<string, unknown>>,
+): QuantumTickOptions | SimulationFailure {
+  const seed: unknown = value.seed;
+  if (
+    seed !== undefined &&
+    typeof seed !== "string" &&
+    !(typeof seed === "number" && Number.isFinite(seed))
+  ) {
+    return simulationFailure("INVALID_MESSAGE", "Quantum seed must be a string or finite number", 400);
+  }
+  if (typeof seed === "string" && seed.length > 256) {
+    return simulationFailure("INVALID_MESSAGE", "Quantum seed must not exceed 256 characters", 400);
+  }
+  if (
+    governanceContext.quantum !== undefined &&
+    quantumGovernanceFromContext(governanceContext) === undefined
+  ) {
+    return simulationFailure("INVALID_MESSAGE", "Quantum governance context is invalid", 400);
+  }
+  const collapsePolicy: unknown = value.collapsePolicy;
+  if (
+    collapsePolicy !== undefined &&
+    collapsePolicy !== "deterministic" &&
+    collapsePolicy !== "probabilistic" &&
+    collapsePolicy !== "governed"
+  ) {
+    return simulationFailure("INVALID_MESSAGE", "Quantum collapsePolicy is unsupported", 400);
+  }
+  return {
+    ...(seed === undefined ? {} : { seed }),
+    ...(collapsePolicy === undefined
+      ? {}
+      : { collapsePolicy: collapsePolicy as QuantumCollapsePolicy }),
+    ...(Object.keys(governanceContext).length === 0 ? {} : { governanceContext }),
+  };
+}
+
 function validateEventPayload(
   type: SimEventType,
   payload: Readonly<Record<string, unknown>>,
@@ -829,6 +940,18 @@ function validateEventPayload(
   ) {
     return "substrate.shift requires a non-negative magnitude";
   }
+  if (
+    type === "substrate.quantum.shift" &&
+    (!finiteNumber(payload.magnitude) || Number(payload.magnitude) < 0)
+  ) {
+    return "substrate.quantum.shift requires a non-negative magnitude";
+  }
+  if (type === "substrate.quantum.branch" && !nonEmptyString(payload.branchId)) {
+    return "substrate.quantum.branch requires branchId";
+  }
+  if (type === "substrate.quantum.collapse" && !nonEmptyString(payload.branchId)) {
+    return "substrate.quantum.collapse requires branchId";
+  }
   if (type.startsWith("tec.") && !nonEmptyString(payload.taskId)) {
     return "TEC event payload requires taskId";
   }
@@ -841,11 +964,16 @@ function evaluateEventGovernance(
   configuredMode: string | undefined,
 ): Readonly<Record<string, unknown>> {
   const mode: UmbrellaMode = resolveMode(configuredMode);
+  const inference = governanceInferenceFromContext(context);
+  const quantum = quantumGovernanceFromContext(context);
   if (mode === "off") {
     return { mode, decision: "allowed", rationale: "Umbrella governance is disabled", eventId: event.id };
   }
 
   const reasons: string[] = [];
+  if (context.quantum !== undefined && quantum === undefined) {
+    reasons.push("quantum governance context is invalid");
+  }
   if (context.deny === true || context.decision === "denied") reasons.push("explicit deny");
   if (Array.isArray(context.deniedEventTypes) && context.deniedEventTypes.includes(event.type)) {
     reasons.push("event type is denied");
@@ -879,6 +1007,13 @@ function evaluateEventGovernance(
   ) {
     reasons.push("substrate shift exceeds policy limit");
   }
+  if (
+    quantum !== undefined &&
+    typeof event.payload.branchId === "string" &&
+    !quantum.allowedBranches.includes(event.payload.branchId)
+  ) {
+    reasons.push("quantum branch is not allowed");
+  }
 
   const denied: boolean = mode === "strict" && reasons.length > 0;
   return {
@@ -892,6 +1027,7 @@ function evaluateEventGovernance(
           : "Umbrella allows the event",
     eventId: event.id,
     warnings: reasons,
+    ...(mode === "advisory" && inference !== undefined ? { inference } : {}),
   };
 }
 
@@ -1159,7 +1295,12 @@ function evaluateGovernance(
       ? envelope.payload.operation
       : envelope.type;
   const context: Readonly<Record<string, unknown>> = envelope.governanceContext;
+  const inference = governanceInferenceFromContext(context);
+  const quantum = quantumGovernanceFromContext(context);
   const deltas: Array<Readonly<Record<string, unknown>>> = [];
+  if (context.quantum !== undefined && quantum === undefined) {
+    deltas.push({ rule: "quantum-context", valid: false });
+  }
   if (context.decision === "denied" || context.deny === true) {
     deltas.push({ rule: "explicit-deny", lane });
   }
@@ -1172,6 +1313,20 @@ function evaluateGovernance(
   if (envelope.payload.structuralTruth === false) {
     deltas.push({ rule: "structural-truth", invariant: "structuralTruth" });
   }
+  if (
+    quantum !== undefined &&
+    typeof envelope.payload.branchId === "string" &&
+    !quantum.allowedBranches.includes(envelope.payload.branchId)
+  ) {
+    deltas.push({ rule: "quantum-branch", branchId: envelope.payload.branchId });
+  }
+  if (
+    quantum?.curvatureLimit !== undefined &&
+    typeof envelope.payload.curvature === "number" &&
+    Math.abs(envelope.payload.curvature) > quantum.curvatureLimit
+  ) {
+    deltas.push({ rule: "quantum-curvature", limit: quantum.curvatureLimit });
+  }
   if (Array.isArray(context.allowedIdentities) && !context.allowedIdentities.includes(envelope.identity)) {
     deltas.push({ rule: "identity-physics", identityAccepted: false });
   }
@@ -1183,6 +1338,7 @@ function evaluateGovernance(
       ? { rationale: denied ? "Umbrella policy denied the operation" : "Umbrella policy recorded advisory findings" }
       : {}),
     deltas,
+    ...(mode === "advisory" && inference !== undefined ? { inference } : {}),
   };
 }
 
