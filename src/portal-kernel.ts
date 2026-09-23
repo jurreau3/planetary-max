@@ -17,6 +17,7 @@ import type {
   SimWindowState,
   UmbrellaMode,
 } from "./types";
+import { governanceInferenceFromContext } from "./inference";
 import {
   formInstituteTruth,
   initialInstituteState,
@@ -33,6 +34,14 @@ import {
   synchronizePlanetaryState,
   type PlanetaryFailure,
 } from "./planetary";
+import {
+  generateQuantumOverlay,
+  QUANTUM_STATE_KEY,
+  quantumGovernanceFromContext,
+  runInference,
+  type QuantumCollapsePolicy,
+  type QuantumOverlay,
+} from "./quantumn";
 
 type UniverseState = Readonly<{
   tick: number;

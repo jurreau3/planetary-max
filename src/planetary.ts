@@ -338,14 +338,15 @@ function parseSubstrate(value: unknown): PlanetarySubstrate | null {
 
 function parseBranch(value: unknown, nodeId: string): QuantumBranch | null {
   if (
-    !isRecord(value) || !nonEmptyString(value.id) || value.node !== nodeId ||
-    !unitInterval(value.probability) || !finiteNumber(value.curvature) || !nonEmptyString(value.signature)
+    !isRecord(value) || !nonEmptyString(value.id) || !unitInterval(value.probability) ||
+    !isRecord(value.stateDelta) || !nonEmptyString(value.signature) ||
+    (value.stateDelta.node !== undefined && value.stateDelta.node !== nodeId) ||
+    (value.stateDelta.curvature !== undefined && !finiteNumber(value.stateDelta.curvature))
   ) return null;
   return deepFreeze({
     id: value.id,
-    node: nodeId,
     probability: value.probability,
-    curvature: value.curvature,
+    stateDelta: structuredClone(value.stateDelta),
     signature: value.signature,
   });
 }
@@ -445,7 +446,7 @@ function governedBranches(
   }
   return branches.sort(
     (left, right): number => compareOrdinal(left.signature, right.signature) ||
-      compareOrdinal(left.node, right.node) || compareOrdinal(left.id, right.id),
+      compareOrdinal(branchNode(left), branchNode(right)) || compareOrdinal(left.id, right.id),
   );
 }
 
@@ -465,9 +466,11 @@ function collapseQuantum(
   const branches: QuantumBranch[] = totals
     .map((branch) => ({
       id: `planetary:${branch.signature}`,
-      node: "planetary",
       probability: totalProbability === 0 ? 0 : precision(branch.probability / totalProbability),
-      curvature: branch.curvature,
+      stateDelta: {
+        node: "planetary",
+        curvature: branch.curvature,
+      },
       signature: branch.signature,
     }))
     .sort((left, right): number => right.probability - left.probability || compareOrdinal(left.signature, right.signature));
@@ -555,9 +558,19 @@ function nodePolicy(nodeId: string, governance: PlanetaryGovernanceContext): Rec
 function weightedCurvature(branches: ReadonlyArray<QuantumBranch>): number {
   const probability: number = branches.reduce((total, branch): number => total + branch.probability, 0);
   return probability === 0 ? 0 : precision(branches.reduce(
-    (total, branch): number => total + branch.curvature * branch.probability,
+    (total, branch): number => total + branchCurvature(branch) * branch.probability,
     0,
   ) / probability);
+}
+
+function branchNode(branch: QuantumBranch): string {
+  const value: unknown = branch.stateDelta.node;
+  return nonEmptyString(value) ? value : "";
+}
+
+function branchCurvature(branch: QuantumBranch): number {
+  const value: unknown = branch.stateDelta.curvature;
+  return finiteNumber(value) ? value : 0;
 }
 
 function stableJson(value: unknown): string {

@@ -5,6 +5,9 @@ import {
   generateQuantumOverlay,
   normalizeProbabilities,
   runInference,
+  type InferenceArtifacts,
+  type InferenceHypothesis,
+  type InferenceRecommendation,
   type QuantumBranch,
   type SimEvent,
 } from "../src/index";
@@ -125,7 +128,7 @@ describe("MAX-Quantumn", () => {
     };
     const simulation = classical([move]);
     const overlay = generateQuantumOverlay({ classical: simulation, seed: "inference-seed" });
-    const result = runInference({
+    const result: InferenceArtifacts = runInference({
       simulation: { ...simulation, diffLog: [] },
       quantum: overlay,
     });
@@ -134,9 +137,9 @@ describe("MAX-Quantumn", () => {
       expect.objectContaining({ data: expect.objectContaining({ source: "quantum-branch" }) }),
       expect.objectContaining({ data: expect.objectContaining({ source: "quantum-curvature" }) }),
     ]));
-    expect(result.hypotheses.some((hypothesis): boolean =>
+    expect(result.hypotheses.some((hypothesis: InferenceHypothesis): boolean =>
       hypothesis.tags.includes("quantum-branching"))).toBe(true);
-    expect(result.recommendations.some((recommendation): boolean =>
+    expect(result.recommendations.some((recommendation: InferenceRecommendation): boolean =>
       recommendation.action.includes("collapse policy"))).toBe(true);
   });
 });

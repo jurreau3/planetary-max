@@ -244,6 +244,13 @@ async function kernelResponse(env: Bindings, envelope: KernelEnvelope): Promise<
 export { createEnvelope, extractLaneData, readKernelResult } from "./kernel-bridge";
 export { resolveUmbrellaMode } from "./governance";
 export {
+  detectInferencePatterns,
+  extractKernelResultFacts,
+  extractQuantumFacts,
+  extractSimulationFacts,
+  generateInferenceRecommendations,
+} from "./inference";
+export {
   formInstituteTruth,
   initialInstituteState,
   isInstituteFormationFailure,
@@ -258,12 +265,28 @@ export {
   parsePlanetarySynchronization,
   synchronizePlanetaryState,
 } from "./planetary";
+export {
+  collapseQuantumBranches,
+  deriveIdentityCurvature,
+  generateQuantumBranches,
+  generateQuantumOverlay,
+  normalizeProbabilities,
+  quantumGovernanceFromContext,
+  runInference,
+} from "./quantumn";
 export { PortalKernel } from "./portal-kernel";
 export type {
   Bindings,
   EpistemicEvent,
   EpistemicEventAction,
   EpistemicTimeline,
+  GovernanceInference,
+  InferenceArtifacts,
+  InferenceFact,
+  InferenceFactKind,
+  InferenceHypothesis,
+  InferenceRecommendation,
+  InferenceRecommendationTarget,
   InstituteCanon,
   InstituteInferenceFact,
   InstituteInferenceHypothesis,
@@ -286,6 +309,11 @@ export type {
   PlanetarySubstrate,
   PlanetarySynchronization,
   QuantumBranch,
+  QuantumCollapsePolicy,
+  QuantumGovernanceContext,
+  QuantumOverlay,
+  QuantumSignature,
+  QuantumState,
   SimAgentState,
   SimEvent,
   SimEventType,
