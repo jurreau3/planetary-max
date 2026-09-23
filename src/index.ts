@@ -248,9 +248,16 @@ export {
   initialInstituteState,
   isInstituteFormationFailure,
   MIN_INSTITUTE_PATTERN_TICKS,
+  MIN_INSTITUTE_HYPOTHESIS_CONFIDENCE,
   MIN_INSTITUTE_STABILITY,
   parseTruthFormation,
 } from "./institute";
+export {
+  initialPlanetaryState,
+  isPlanetaryFailure,
+  parsePlanetarySynchronization,
+  synchronizePlanetaryState,
+} from "./planetary";
 export { PortalKernel } from "./portal-kernel";
 export type {
   Bindings,
@@ -259,6 +266,7 @@ export type {
   EpistemicTimeline,
   InstituteCanon,
   InstituteInferenceFact,
+  InstituteInferenceHypothesis,
   InstituteQuantumBranch,
   InstituteSimulationDelta,
   InstituteState,
@@ -268,6 +276,16 @@ export type {
   KernelLane,
   KernelResult,
   PortalKernelState,
+  PlanetaryAnomaly,
+  PlanetaryCanon,
+  PlanetaryGovernanceContext,
+  PlanetaryIdentity,
+  PlanetaryNodeSnapshot,
+  PlanetaryQuantumState,
+  PlanetaryState,
+  PlanetarySubstrate,
+  PlanetarySynchronization,
+  QuantumBranch,
   SimAgentState,
   SimEvent,
   SimEventType,

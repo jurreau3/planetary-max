@@ -202,17 +202,46 @@ value `enabled` intentionally fails closed to `strict`.
 timelines. Send an authenticated local kernel message with type
 `institute.truth.form`; its payload must provide a truth `id`, `description`,
 logical timestamp `at`, inference `facts`, `quantumBranches`, and
-`simulationDeltas`. Every source fact must have quantum support and appear in
+`simulationDeltas`. It may also include inference `hypotheses` with confidence,
+curvature guidance, and collapse-policy suggestions. Every source fact must have quantum support and appear in
 at least two distinct simulation ticks. Unstable evidence is rejected without
 changing the canon.
 
 The authenticated envelope identity owns the resulting epistemic event; a
 caller-supplied identity is never accepted. Read the current state with
 `institute.canon.state` or the caller's timeline with
-`institute.timeline.state`. The Worker also exposes these explicit views:
+`institute.timeline.state`. Canon versions advance only for material truth
+changes. Strict governance accepts `stabilityThreshold` and `curvatureLimit`
+in the envelope governance context. The Worker exposes these explicit views:
 
 - `GET /api/introspection/institute/canon`
+- `GET /api/introspection/institute/truths`
+- `GET /api/introspection/institute/timeline?identityId=<id>`
+- `GET /api/introspection/institute/stability`
+- `GET /api/introspection/institute/signature`
 - `GET /api/introspection/institute/timelines`
+
+## Planetary Mode synchronization
+
+Send an authenticated local kernel message with type `planetary.sync`. Its
+payload contains a logical `at` timestamp, a complete `nodes` snapshot array,
+a `collapsePolicy`, and a global `governance` context. Each node supplies its
+identity replicas, substrates, quantum branches, Institute canon, and
+truth-to-quantum signature map. PortalKernel sorts and validates the snapshots,
+then atomically replaces planetary state with a deterministic aggregation.
+
+Strict mode requires identity signatures and epistemic events to agree across
+replicas, filters quantum signatures denied by global collapse rules, and only
+admits canon truths that are structurally stable with converged signatures on
+every active node. `globalTruthRules.minStability` and per-node `enabled`
+policies override local state. Current state is also available through the
+`planetary.state` kernel message and these introspection views:
+
+- `GET /api/introspection/planetary/identity`
+- `GET /api/introspection/planetary/substrate`
+- `GET /api/introspection/planetary/quantum`
+- `GET /api/introspection/planetary/canon`
+- `GET /api/introspection/planetary/governance`
 
 ## Development
 

@@ -186,10 +186,19 @@ export type InstituteInferenceFact = Readonly<{
   confidence: number;
 }>;
 
+export type InstituteInferenceHypothesis = Readonly<{
+  id: string;
+  factIds: ReadonlyArray<string>;
+  confidence: number;
+  curvatureGuidance?: number;
+  collapsePolicySuggestion?: PlanetaryQuantumState["collapsePolicy"];
+}>;
+
 export type InstituteQuantumBranch = Readonly<{
   factId: string;
   probability: number;
   curvature: number;
+  signature?: string;
 }>;
 
 export type InstituteSimulationDelta = Readonly<{
@@ -202,7 +211,89 @@ export type InstituteTruthFormation = Readonly<{
   description: string;
   identityId: string;
   facts: ReadonlyArray<InstituteInferenceFact>;
+  hypotheses: ReadonlyArray<InstituteInferenceHypothesis>;
   quantumBranches: ReadonlyArray<InstituteQuantumBranch>;
   simulationDeltas: ReadonlyArray<InstituteSimulationDelta>;
   at: number;
+}>;
+
+export type PlanetaryIdentity = Readonly<{
+  id: string;
+  originNode: string;
+  timeline: EpistemicTimeline;
+  curvature: number;
+  signature: string;
+}>;
+
+export type PlanetaryAnomaly = Readonly<{
+  id: string;
+  node: string;
+  magnitude: number;
+  signature: string;
+  at: number;
+}>;
+
+export type PlanetarySubstrate = Readonly<{
+  id: string;
+  nodes: ReadonlyArray<string>;
+  topology: Readonly<Record<string, unknown>>;
+  stability: number;
+  anomalies: ReadonlyArray<PlanetaryAnomaly>;
+}>;
+
+export type PlanetaryGovernanceContext = Readonly<{
+  mode: UmbrellaMode;
+  nodePolicies: Readonly<Record<string, unknown>>;
+  globalTruthRules: Readonly<Record<string, unknown>>;
+  collapseRules: Readonly<Record<string, unknown>>;
+}>;
+
+export type QuantumBranch = Readonly<{
+  id: string;
+  node: string;
+  probability: number;
+  curvature: number;
+  signature: string;
+}>;
+
+export type PlanetaryQuantumState = Readonly<{
+  branches: ReadonlyArray<QuantumBranch>;
+  globalCurvature: number;
+  globalSignature: string;
+  collapsePolicy: "deterministic" | "probabilistic" | "governed";
+}>;
+
+export type PlanetaryCanon = Readonly<{
+  truths: Readonly<Record<string, InstituteTruth>>;
+  version: number;
+  updatedAt: number;
+  globalStability: number;
+}>;
+
+export type PlanetaryNodeSnapshot = Readonly<{
+  nodeId: string;
+  identities: ReadonlyArray<PlanetaryIdentity>;
+  substrates: ReadonlyArray<PlanetarySubstrate>;
+  quantumBranches: ReadonlyArray<QuantumBranch>;
+  canon: InstituteCanon;
+  truthSignatures: Readonly<Record<string, string>>;
+}>;
+
+export type PlanetarySynchronization = Readonly<{
+  at: number;
+  coordinatorIdentity: string;
+  nodes: ReadonlyArray<PlanetaryNodeSnapshot>;
+  governance: PlanetaryGovernanceContext;
+  collapsePolicy: PlanetaryQuantumState["collapsePolicy"];
+}>;
+
+export type PlanetaryState = Readonly<{
+  identities: Readonly<Record<string, PlanetaryIdentity>>;
+  substrates: Readonly<Record<string, PlanetarySubstrate>>;
+  quantum: PlanetaryQuantumState;
+  canon: PlanetaryCanon;
+  governance: PlanetaryGovernanceContext;
+  coordinatorIdentity: string;
+  synchronizedAt: number;
+  advisories: ReadonlyArray<string>;
 }>;
