@@ -1,115 +1,73 @@
+//
+// Unified Inference Engine
+// MAX‑Institute + Portal‑OS Wing
+//
+
 import {
+  GovernanceInference,
   InferenceArtifacts,
   InferenceFact,
   InferenceFactKind,
   InferenceHypothesis,
   InferenceRecommendation,
-  QuantumOverlay,
-  QuantumBranch,
+  KernelResult,
+  PortalKernelState,
   SimEvent,
-  SimAgentState,
+  SimTecTaskState,
+  SimTickDiff,
   SimWindowState,
-  SimSubstrateState,
 } from "./types";
 
-/**
- * Extract facts from the quantum overlay.
- */
-export function extractQuantumFacts(overlay: QuantumOverlay): InferenceFact[] {
-  return [
-    {
-      kind: "quantum",
-      data: {
-        signature: overlay.signature,
-        curvature: overlay.curvature,
-        branches: overlay.branches.map((b: QuantumBranch) => ({
-          id: b.id,
-          probability: b.probability,
-          signature: b.signature,
-        })),
-      },
-    },
-  ];
-}
-
-/**
- * Extract simulation facts from a simulation tick.
- */
-export function extractSimulationFacts(
-  events: SimEvent[],
-  agents: SimAgentState[],
-  windows: SimWindowState[],
-  substrate: SimSubstrateState,
+export function extractFactsFromKernel(
+  kernel: KernelResult
 ): InferenceFact[] {
-  return [
-    {
-      kind: "simulation",
-      data: {
-        events,
-        agents,
-        windows,
-        substrate,
-      },
-    },
-  ];
+  const facts: InferenceFact[] = [];
+
+  if (kernel.governance) {
+    facts.push({
+      id: "governance-mode",
+      kind: "governance",
+      payload: kernel.governance.mode,
+    });
+  }
+
+  return facts;
 }
 
-/**
- * Extract kernel result facts from the overlay.
- */
-export function extractKernelResultFacts(
-  overlay: QuantumOverlay
-): InferenceFact[] {
-  return [
-    {
-      kind: "quantum",
-      data: {
-        signature: overlay.signature,
-        curvature: overlay.curvature,
-      },
-    },
-  ];
-}
-
-/**
- * Detect inference patterns from facts.
- */
-export function detectInferencePatterns(
+export function raiseConfidenceFromBehavior(
   facts: InferenceFact[]
-): InferenceHypothesis[] {
-  return facts.map((fact, index) => ({
-    id: `hypothesis-${index}`,
-    confidence: 0.5,
-    facts: [fact],
-  }));
-}
+): InferenceHypothesis {
+  const confidence =
+    facts.length > 2 ? 0.9 : facts.length > 0 ? 0.6 : 0.3;
 
-/**
- * Generate recommendations from hypotheses.
- */
-export function generateInferenceRecommendations(
-  hypotheses: InferenceHypothesis[]
-): InferenceRecommendation[] {
-  return hypotheses.map((h) => ({
-    target: "quantum",
-    action: "adjust-curvature",
-    rationale: `Based on hypothesis ${h.id} with confidence ${h.confidence}`,
-  }));
-}
-
-/**
- * Unified inference pipeline.
- */
-export function runInference(
-  baseState: Record<string, unknown>
-): InferenceArtifacts {
-  const overlay: QuantumOverlay = {
-    branches: [],
-    curvature: 1,
-    signature: "sha256:inference",
-    collapsePolicy: "deterministic",
+  return {
+    id: "behavior-hypothesis",
+    facts,
+    confidence,
   };
+}
 
-  const facts = extractKernelResultFacts(overlay);
-  return { overlay, facts };
+export function recommendSubstrateAdjustment(
+  state: PortalKernelState
+): InferenceRecommendation {
+  return {
+    id: "substrate-recommendation",
+    target: "substrate",
+    payload: { stabilityDelta: -0.1 },
+  };
+}
+
+export function runInferenceFromKernel(
+  kernel: KernelResult,
+  state: PortalKernelState
+): InferenceArtifacts {
+  const facts = extractFactsFromKernel(kernel);
+  const hypotheses = [raiseConfidenceFromBehavior(facts)];
+  const recommendations = [recommendSubstrateAdjustment(state)];
+
+  return {
+    facts,
+    hypotheses,
+    recommendations,
+  };
 }
