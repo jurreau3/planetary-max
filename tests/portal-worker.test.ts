@@ -134,6 +134,40 @@ function simulationEvent(
   return { id, type, payload, at, ...(identityId === undefined ? {} : { identityId }) };
 }
 
+function instituteFormation(
+  id: string,
+  at: number,
+  confidence = 0.9,
+): Record<string, unknown> {
+  const factId = `${id}-fact`;
+  return {
+    id,
+    description: `Stable structure ${id}`,
+    at,
+    facts: [{ id: factId, description: `Inference ${id}`, confidence }],
+    quantumBranches: [
+      { factId, probability: 0.8, curvature: 0.25 },
+      { factId, probability: 0.7, curvature: 0.5 },
+    ],
+    simulationDeltas: [
+      { factId, tick: 1 },
+      { factId, tick: 2 },
+    ],
+  };
+}
+
+async function instituteRequest(
+  kernel: PortalKernel,
+  payload: Record<string, unknown>,
+  governanceContext: Record<string, unknown> = {},
+): Promise<Response> {
+  return app.request(
+    '/api/kernel/message',
+    authorized('POST', { type: 'institute.truth.form', payload, governanceContext }),
+    makeBindings({ kernel }),
+  );
+}
+
 describe('kernel result helpers', () => {
   it('resolves all supported umbrella modes', () => {
     expect(['strict', 'advisory', 'off'].map(resolveUmbrellaMode)).toEqual(['strict', 'advisory', 'off']);
@@ -472,6 +506,8 @@ describe('Hono Worker routes', () => {
     ['messages', 'messages'],
     ['logs', 'logs'],
     ['inference', 'inference'],
+    ['institute/canon', 'institute.canon'],
+    ['institute/timelines', 'institute.timelines'],
   ])('exposes introspection route %s', async (route, kind) => {
     const response = await app.request(`/api/introspection/${route}`, undefined, makeBindings());
     expect(response.status).toBe(200);
@@ -480,6 +516,106 @@ describe('Hono Worker routes', () => {
       introspection: kind,
       worker: 'planetary-max',
     });
+  });
+});
+
+describe('MAX-Institute truth layer', () => {
+  it('forms stable truths and records an identity-bound epistemic timeline', async () => {
+    const kernel = makeKernel();
+    const response = await instituteRequest(kernel, instituteFormation('truth-1', 10));
+    const body = await response.json<{
+      result: {
+        truth: { id: string; sourceFacts: string[]; stability: number; curvature: number };
+        epistemicEvent: { action: string; meta: { identityId: string } };
+        canonVersion: number;
+      };
+    }>();
+    const state = await kernel.fetch(new Request('https://kernel.test/kernel/institute/state'));
+    const stateBody = await state.json<{
+      result: { canon: { truths: Record<string, unknown>; version: number }; timelines: Record<string, unknown> };
+    }>();
+
+    expect(response.status).toBe(200);
+    expect(body.result.truth).toMatchObject({
+      id: 'truth-1',
+      sourceFacts: ['truth-1-fact'],
+      curvature: 0.366667,
+    });
+    expect(body.result.truth.stability).toBeGreaterThanOrEqual(0.6);
+    expect(body.result.epistemicEvent).toMatchObject({
+      action: 'added',
+      meta: { identityId: 'test-user' },
+    });
+    expect(body.result.canonVersion).toBe(1);
+    expect(stateBody.result.canon.truths).toHaveProperty('truth-1');
+    expect(stateBody.result.timelines).toHaveProperty('test-user');
+  });
+
+  it('rejects patterns that do not persist across simulation ticks without changing canon', async () => {
+    const kernel = makeKernel();
+    const formation = instituteFormation('unstable-truth', 10);
+    formation.simulationDeltas = [{ factId: 'unstable-truth-fact', tick: 1 }];
+    const response = await instituteRequest(kernel, formation);
+    const state = await kernel.fetch(new Request('https://kernel.test/kernel/institute/state'));
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'UNSTABLE_INSTITUTE_PATTERN' },
+    });
+    expect(await state.json()).toMatchObject({
+      result: { canon: { truths: {}, version: 0 }, timelines: {} },
+    });
+  });
+
+  it('updates canon deterministically while preserving truth creation time', async () => {
+    const kernel = makeKernel();
+    await instituteRequest(kernel, instituteFormation('truth-1', 10));
+    const update = instituteFormation('truth-1', 20);
+    update.description = 'Refined stable structure';
+    const response = await instituteRequest(kernel, update);
+
+    expect(await response.json()).toMatchObject({
+      result: {
+        truth: { description: 'Refined stable structure', createdAt: 10, updatedAt: 20 },
+        epistemicEvent: { id: 'truth-1:2:updated', action: 'updated' },
+        canonVersion: 2,
+      },
+    });
+  });
+
+  it('exposes canon and epistemic timelines through Institute introspection', async () => {
+    const kernel = makeKernel();
+    const bindings = makeBindings({ kernel });
+    await instituteRequest(kernel, instituteFormation('truth-1', 10));
+
+    const canon = await app.request('/api/introspection/institute/canon', undefined, bindings);
+    const timelines = await app.request('/api/introspection/institute/timelines', undefined, bindings);
+
+    expect(await canon.json()).toMatchObject({
+      ok: true,
+      introspection: 'institute.canon',
+      result: { version: 1, truths: { 'truth-1': { id: 'truth-1' } } },
+    });
+    expect(await timelines.json()).toMatchObject({
+      ok: true,
+      introspection: 'institute.timelines',
+      result: [{ identityId: 'test-user', events: [{ truthId: 'truth-1', action: 'added' }] }],
+    });
+  });
+
+  it('does not form a truth when Umbrella governance denies it', async () => {
+    const kernel = makeKernel();
+    const response = await instituteRequest(
+      kernel,
+      instituteFormation('denied-truth', 10),
+      { permissions: { 'institute.truth.form': false } },
+    );
+    const state = await kernel.fetch(new Request('https://kernel.test/kernel/institute/state'));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
+    expect(await state.json()).toMatchObject({ result: { canon: { version: 0, truths: {} } } });
   });
 });
 

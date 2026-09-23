@@ -143,3 +143,66 @@ export type SimTecTaskState = Readonly<{
   status: "created" | "completed";
   tickVersion: number;
 }>;
+
+export type InstituteTruth = Readonly<{
+  id: string;
+  description: string;
+  sourceFacts: ReadonlyArray<string>;
+  stability: number;
+  curvature: number;
+  createdAt: number;
+  updatedAt: number;
+}>;
+
+export type InstituteCanon = Readonly<{
+  truths: Readonly<Record<string, InstituteTruth>>;
+  version: number;
+  updatedAt: number;
+}>;
+
+export type EpistemicEventAction = "added" | "updated" | "deprecated";
+
+export type EpistemicEvent = Readonly<{
+  id: string;
+  truthId: string;
+  action: EpistemicEventAction;
+  at: number;
+  meta: Readonly<Record<string, unknown>>;
+}>;
+
+export type EpistemicTimeline = Readonly<{
+  identityId: string;
+  events: ReadonlyArray<EpistemicEvent>;
+}>;
+
+export type InstituteState = Readonly<{
+  canon: InstituteCanon;
+  timelines: Readonly<Record<string, EpistemicTimeline>>;
+}>;
+
+export type InstituteInferenceFact = Readonly<{
+  id: string;
+  description: string;
+  confidence: number;
+}>;
+
+export type InstituteQuantumBranch = Readonly<{
+  factId: string;
+  probability: number;
+  curvature: number;
+}>;
+
+export type InstituteSimulationDelta = Readonly<{
+  factId: string;
+  tick: number;
+}>;
+
+export type InstituteTruthFormation = Readonly<{
+  id: string;
+  description: string;
+  identityId: string;
+  facts: ReadonlyArray<InstituteInferenceFact>;
+  quantumBranches: ReadonlyArray<InstituteQuantumBranch>;
+  simulationDeltas: ReadonlyArray<InstituteSimulationDelta>;
+  at: number;
+}>;

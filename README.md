@@ -196,6 +196,24 @@ curl -fsS -X POST -H "Authorization: Bearer $TOKEN" \
 `UMBRELLA_ENFORCEMENT` accepts `strict`, `advisory`, or `off`. The configured
 value `enabled` intentionally fails closed to `strict`.
 
+## MAX-Institute truth formation
+
+`PortalKernel` persists the Institute canon and identity-bound epistemic
+timelines. Send an authenticated local kernel message with type
+`institute.truth.form`; its payload must provide a truth `id`, `description`,
+logical timestamp `at`, inference `facts`, `quantumBranches`, and
+`simulationDeltas`. Every source fact must have quantum support and appear in
+at least two distinct simulation ticks. Unstable evidence is rejected without
+changing the canon.
+
+The authenticated envelope identity owns the resulting epistemic event; a
+caller-supplied identity is never accepted. Read the current state with
+`institute.canon.state` or the caller's timeline with
+`institute.timeline.state`. The Worker also exposes these explicit views:
+
+- `GET /api/introspection/institute/canon`
+- `GET /api/introspection/institute/timelines`
+
 ## Development
 
 ```bash

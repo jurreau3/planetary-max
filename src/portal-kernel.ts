@@ -1,5 +1,7 @@
 import type {
+  EpistemicTimeline,
   GovernanceMetadata,
+  InstituteState,
   KernelEnvelope,
   KernelEnvironment,
   KernelLane,
@@ -14,6 +16,14 @@ import type {
   SimWindowState,
   UmbrellaMode,
 } from "./types";
+import {
+  formInstituteTruth,
+  initialInstituteState,
+  isInstituteFormationFailure,
+  parseTruthFormation,
+  type InstituteFormationFailure,
+  type InstituteFormationResult,
+} from "./institute";
 
 type UniverseState = Readonly<{
   tick: number;
@@ -76,6 +86,7 @@ const SIMULATION_STATE_KEY = "simulation";
 const SIMULATION_EVENT_LOG_KEY = "simulation-event-log";
 const SIMULATION_DIFF_LOG_KEY = "simulation-diff-log";
 const SIMULATION_TEC_TASKS_KEY = "simulation-tec-tasks";
+const INSTITUTE_STATE_KEY = "institute";
 const INTROSPECTION_PREFIX = "introspection.";
 const MAX_QUEUED_EVENTS = 1_000;
 const MAX_EVENT_LOG_ENTRIES = 200;
@@ -132,6 +143,11 @@ export class PortalKernel {
       return request.method === "POST"
         ? this.simulationTickResponse()
         : failureResponse("METHOD_NOT_ALLOWED", "Simulation ticks require POST", 405);
+    }
+    if (url.pathname === "/kernel/institute/state") {
+      return request.method === "GET"
+        ? this.instituteStateResponse()
+        : failureResponse("METHOD_NOT_ALLOWED", "Institute state requires GET", 405);
     }
     if (url.pathname !== "/api/kernel/message") {
       return Response.json({ status: "ok", service: "portal-kernel" });
@@ -247,6 +263,22 @@ export class PortalKernel {
       };
     }
 
+    if (envelope.type === "institute.truth.form") {
+      return this.formInstituteTruth(envelope);
+    }
+    if (envelope.type === "institute.canon.state") {
+      const state: InstituteState = await this.readInstituteState();
+      return { data: { canon: state.canon } };
+    }
+    if (envelope.type === "institute.timeline.state") {
+      const state: InstituteState = await this.readInstituteState();
+      const timeline: EpistemicTimeline = state.timelines[envelope.identity] ?? {
+        identityId: envelope.identity,
+        events: [],
+      };
+      return { data: { timeline } };
+    }
+
     if (envelope.type.startsWith(INTROSPECTION_PREFIX)) {
       return { data: this.introspectionSnapshot(envelope, governance) };
     }
@@ -336,6 +368,39 @@ export class PortalKernel {
         },
       },
     });
+  }
+
+  private async instituteStateResponse(): Promise<Response> {
+    return Response.json({ ok: true, result: await this.readInstituteState() });
+  }
+
+  private async formInstituteTruth(envelope: KernelEnvelope): Promise<DispatchOutput | Response> {
+    const formation = parseTruthFormation(envelope.payload, envelope.identity);
+    if ("code" in formation) {
+      return failureResponse(formation.code, formation.message, 400);
+    }
+    return this.state.storage.transaction(
+      async (transaction: DurableObjectTransaction): Promise<DispatchOutput | Response> => {
+        const current: InstituteState =
+          (await transaction.get<InstituteState>(INSTITUTE_STATE_KEY)) ?? initialInstituteState();
+        const result: InstituteFormationResult | InstituteFormationFailure = formInstituteTruth(
+          current,
+          formation,
+        );
+        if (isInstituteFormationFailure(result)) {
+          const status: number = result.code === "UNSTABLE_INSTITUTE_PATTERN" ? 422 : 400;
+          return failureResponse(result.code, result.message, status);
+        }
+        await transaction.put(INSTITUTE_STATE_KEY, result.state);
+        return {
+          data: {
+            truth: result.truth,
+            epistemicEvent: result.event,
+            canonVersion: result.state.canon.version,
+          },
+        };
+      },
+    );
   }
 
   private async enqueueSimulationEvent(
@@ -501,6 +566,10 @@ export class PortalKernel {
 
   private async readUniverse(): Promise<UniverseState> {
     return (await this.state.storage.get<UniverseState>(UNIVERSE_STATE_KEY)) ?? initialUniverse();
+  }
+
+  private async readInstituteState(): Promise<InstituteState> {
+    return (await this.state.storage.get<InstituteState>(INSTITUTE_STATE_KEY)) ?? initialInstituteState();
   }
 
   private async tickUniverse(envelope: KernelEnvelope): Promise<UniverseState> {
@@ -1052,6 +1121,7 @@ function laneForType(type: string): string {
   if (type === "umbrella.os" || type.startsWith("os.")) return "umbrella.os";
   if (type.startsWith("umbrella.") || type.includes("license")) return "umbrella";
   if (type.startsWith("universe.")) return "universe";
+  if (type.startsWith("institute.")) return "institute";
   return "kernel";
 }
 
@@ -1071,6 +1141,7 @@ function umbrellaUpdateName(type: string): string {
   if (type === "umbrella.os" || type.startsWith("os.")) return "os-update";
   if (type.startsWith("umbrella.") || type.includes("license")) return "sim-update";
   if (type.startsWith("sim.")) return "simulation";
+  if (type.startsWith("institute.")) return "institute";
   return "kernel";
 }
 

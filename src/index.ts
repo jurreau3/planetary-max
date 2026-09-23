@@ -243,9 +243,27 @@ async function kernelResponse(env: Bindings, envelope: KernelEnvelope): Promise<
 
 export { createEnvelope, extractLaneData, readKernelResult } from "./kernel-bridge";
 export { resolveUmbrellaMode } from "./governance";
+export {
+  formInstituteTruth,
+  initialInstituteState,
+  isInstituteFormationFailure,
+  MIN_INSTITUTE_PATTERN_TICKS,
+  MIN_INSTITUTE_STABILITY,
+  parseTruthFormation,
+} from "./institute";
 export { PortalKernel } from "./portal-kernel";
 export type {
   Bindings,
+  EpistemicEvent,
+  EpistemicEventAction,
+  EpistemicTimeline,
+  InstituteCanon,
+  InstituteInferenceFact,
+  InstituteQuantumBranch,
+  InstituteSimulationDelta,
+  InstituteState,
+  InstituteTruth,
+  InstituteTruthFormation,
   KernelEnvelope,
   KernelLane,
   KernelResult,

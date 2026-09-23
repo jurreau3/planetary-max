@@ -1,6 +1,8 @@
 import type { Context, Hono } from "hono";
 import type {
   Bindings,
+  EpistemicTimeline,
+  InstituteState,
   PortalKernelState,
   SimEvent,
   SimTecTaskState,
@@ -20,7 +22,9 @@ export type IntrospectionKind =
   | "substrate.state"
   | "messages"
   | "logs"
-  | "inference";
+  | "inference"
+  | "institute.canon"
+  | "institute.timelines";
 
 type SimulationIntrospectionState = PortalKernelState & Readonly<{
   eventLog: ReadonlyArray<SimEvent>;
@@ -30,21 +34,10 @@ type SimulationIntrospectionState = PortalKernelState & Readonly<{
 
 const KERNEL_OBJECT_NAME = "portal-kernel";
 const SIMULATION_STATE_URL = "https://portal-kernel.invalid/kernel/sim/state";
+const INSTITUTE_STATE_URL = "https://portal-kernel.invalid/kernel/institute/state";
 
-const INTROSPECTION_ROUTES: ReadonlyArray<readonly [string, IntrospectionKind]> = [
-  ["/api/introspection/sim/behavior", "sim.behavior"],
-  ["/api/introspection/identity/timeline", "identity.timeline"],
-  ["/api/introspection/windows/focus", "windows.focus"],
-  ["/api/introspection/windows/state", "windows.state"],
-  ["/api/introspection/windows/timeline", "windows.timeline"],
-  ["/api/introspection/umbrella/enforcement", "umbrella.enforcement"],
-  ["/api/introspection/kernel/heatmap", "kernel.heatmap"],
-  ["/api/introspection/tec/pipeline", "tec.pipeline"],
-  ["/api/introspection/substrate/state", "substrate.state"],
-  ["/api/introspection/messages", "messages"],
-  ["/api/introspection/logs", "logs"],
-  ["/api/introspection/inference", "inference"],
-];
+const INSTITUTE_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> =
+  new Set<IntrospectionKind>(["institute.canon", "institute.timelines"]);
 
 const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<IntrospectionKind>([
   "sim.behavior",
@@ -62,17 +55,45 @@ const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<I
 export function attachIntrospectionRoutes(
   app: Hono<{ Bindings: Bindings }>,
 ): void {
-  for (const [path, kind] of INTROSPECTION_ROUTES) {
-    app.get(path, (context: Context<{ Bindings: Bindings }>): Promise<Response> =>
-      handleIntrospection(context, kind),
-    );
-  }
+  app.get("/api/introspection/sim/behavior", introspectionHandler("sim.behavior"));
+  app.get("/api/introspection/identity/timeline", introspectionHandler("identity.timeline"));
+  app.get("/api/introspection/windows/focus", introspectionHandler("windows.focus"));
+  app.get("/api/introspection/windows/state", introspectionHandler("windows.state"));
+  app.get("/api/introspection/windows/timeline", introspectionHandler("windows.timeline"));
+  app.get("/api/introspection/umbrella/enforcement", introspectionHandler("umbrella.enforcement"));
+  app.get("/api/introspection/kernel/heatmap", introspectionHandler("kernel.heatmap"));
+  app.get("/api/introspection/tec/pipeline", introspectionHandler("tec.pipeline"));
+  app.get("/api/introspection/substrate/state", introspectionHandler("substrate.state"));
+  app.get("/api/introspection/messages", introspectionHandler("messages"));
+  app.get("/api/introspection/logs", introspectionHandler("logs"));
+  app.get("/api/introspection/inference", introspectionHandler("inference"));
+  app.get("/api/introspection/institute/canon", introspectionHandler("institute.canon"));
+  app.get("/api/introspection/institute/timelines", introspectionHandler("institute.timelines"));
+}
+
+function introspectionHandler(
+  kind: IntrospectionKind,
+): (context: Context<{ Bindings: Bindings }>) => Promise<Response> {
+  return (context: Context<{ Bindings: Bindings }>): Promise<Response> =>
+    handleIntrospection(context, kind);
 }
 
 async function handleIntrospection(
   context: Context<{ Bindings: Bindings }>,
   kind: IntrospectionKind,
 ): Promise<Response> {
+  if (INSTITUTE_INTROSPECTION_KINDS.has(kind)) {
+    const state: InstituteState | Response = await readInstituteState(context.env);
+    if (state instanceof Response) return state;
+    return context.json({
+      ok: true,
+      introspection: kind,
+      worker: "planetary-max",
+      result: kind === "institute.canon"
+        ? state.canon
+        : Object.values(state.timelines).sort(compareTimelines),
+    });
+  }
   if (!SIMULATION_INTROSPECTION_KINDS.has(kind)) {
     return context.json({ ok: true, introspection: kind, worker: "planetary-max" });
   }
@@ -85,6 +106,22 @@ async function handleIntrospection(
     worker: "planetary-max",
     result: introspectionResult(kind, state),
   });
+}
+
+async function readInstituteState(env: Bindings): Promise<InstituteState | Response> {
+  try {
+    const id: DurableObjectId = env.PORTAL_KERNEL.idFromName(KERNEL_OBJECT_NAME);
+    const response: Response = await env.PORTAL_KERNEL.get(id).fetch(
+      new Request(INSTITUTE_STATE_URL, { method: "GET" }),
+    );
+    const value: unknown = await response.json();
+    if (!response.ok || !isRecord(value) || value.ok !== true || !isInstituteState(value.result)) {
+      return introspectionFailure("PortalKernel returned an invalid Institute snapshot");
+    }
+    return value.result;
+  } catch {
+    return introspectionFailure("PortalKernel Institute snapshot is unavailable");
+  }
 }
 
 async function readSimulationState(
@@ -202,6 +239,17 @@ function compareOrdinal(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+function compareTimelines(left: EpistemicTimeline, right: EpistemicTimeline): number {
+  return compareOrdinal(left.identityId, right.identityId);
+}
+
+function introspectionFailure(message: string): Response {
+  return Response.json(
+    { ok: false, error: { code: "INTROSPECTION_FAILED", message } },
+    { status: 503 },
+  );
+}
+
 function isSimulationState(value: unknown): value is SimulationIntrospectionState {
   return (
     isRecord(value) &&
@@ -213,6 +261,17 @@ function isSimulationState(value: unknown): value is SimulationIntrospectionStat
     Array.isArray(value.eventLog) &&
     Array.isArray(value.diffLog) &&
     isRecord(value.tecTasks)
+  );
+}
+
+function isInstituteState(value: unknown): value is InstituteState {
+  return (
+    isRecord(value) &&
+    isRecord(value.canon) &&
+    isRecord(value.canon.truths) &&
+    typeof value.canon.version === "number" &&
+    typeof value.canon.updatedAt === "number" &&
+    isRecord(value.timelines)
   );
 }
 
