@@ -1,37 +1,44 @@
-import { QuantumOverlay, QuantumBranch } from "./types";
-import { QUANTUM_STATE_KEY, collapseQuantumBranches } from "./quantumn";
+import {
+  QuantumOverlay,
+  QuantumCollapsePolicy,
+  GovernanceContext,
+} from "./types";
 
-type KernelState = {
-  planetary: Record<string, unknown>;
-  sim: Record<string, unknown>;
-};
+import {
+  generateQuantumOverlay,
+  collapseQuantumBranches,
+} from "./quantumn";
 
-export async function kernelTick(
-  state: KernelState,
-  seed?: number
-): Promise<KernelState> {
-  const overlay = state.planetary[QUANTUM_STATE_KEY] as QuantumOverlay | undefined;
+import {
+  runInference,
+  extractKernelResultFacts,
+} from "./inference";
 
-  if (!overlay) {
-    return runSimTick(state);
-  }
+import {
+  quantumGovernanceFromContext,
+  governanceInferenceFromContext,
+} from "./governance";
 
-  const branch: QuantumBranch = collapseQuantumBranches(overlay, seed);
-  const nextSim = applyStateDelta(state.sim, branch.stateDelta);
+const QUANTUM_STATE_KEY = "portal.quantum.state";
+
+export async function runPortalKernel(
+  baseState: Record<string, unknown>,
+  context: GovernanceContext
+): Promise<Record<string, unknown>> {
+  const policy: QuantumCollapsePolicy = quantumGovernanceFromContext(context);
+
+  const overlay: QuantumOverlay = generateQuantumOverlay(baseState, policy);
+  const collapsed = collapseQuantumBranches(overlay, policy);
+
+  const inference = runInference(collapsed);
+  const facts = extractKernelResultFacts(inference.overlay);
 
   return {
-    planetary: state.planetary,
-    sim: nextSim,
+    ...collapsed,
+    [QUANTUM_STATE_KEY]: {
+      overlay,
+      facts,
+      governance: governanceInferenceFromContext(context),
+    },
   };
-}
-
-function runSimTick(state: KernelState): KernelState {
-  return state;
-}
-
-function applyStateDelta(
-  sim: Record<string, unknown>,
-  delta: Readonly<Record<string, unknown>>
-): Record<string, unknown> {
-  return { ...sim, ...delta };
 }
