@@ -1,4 +1,7 @@
-export type QuantumCollapsePolicy = "deterministic" | "probabilistic" | "governed";
+export type QuantumCollapsePolicy =
+  | "deterministic"
+  | "probabilistic"
+  | "governed";
 
 export type QuantumBranch = {
   id: string;
@@ -12,6 +15,22 @@ export type QuantumOverlay = {
   curvature: number;
   signature: string;
   collapsePolicy: QuantumCollapsePolicy;
+};
+
+export type GovernanceMetadata = {
+  id: string;
+  kind: "policy" | "constraint" | "signal";
+  source: "institute" | "portal" | "planetary" | "market";
+  createdAt: string;
+  updatedAt?: string;
+  tags?: string[];
+};
+
+export type GovernanceContext = {
+  instituteId: string;
+  portalId?: string;
+  planetaryId?: string;
+  metadata?: GovernanceMetadata[];
 };
 
 export type IntrospectionKind =
