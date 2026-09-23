@@ -272,12 +272,93 @@ export type InferenceRecommendationTarget =
 
 export type InferenceRecommendation = {
   id: string;
-  target: InferenceRecommendationTarget;
-  payload: unknown;
-};
+  node: string;
+  probability: number;
+  curvature: number;
+  signature: string;
+}>;
 
-export type InferenceArtifacts = {
-  facts: InferenceFact[];
-  hypotheses: InferenceHypothesis[];
-  recommendations: InferenceRecommendation[];
-};
+export type PlanetaryQuantumState = Readonly<{
+  branches: ReadonlyArray<QuantumBranch>;
+  globalCurvature: number;
+  globalSignature: string;
+  collapsePolicy: "deterministic" | "probabilistic" | "governed";
+  selectedBranch: QuantumBranch | null;
+}>;
+
+export type PlanetaryCanon = Readonly<{
+  truths: Readonly<Record<string, InstituteTruth>>;
+  version: number;
+  updatedAt: number;
+  globalStability: number;
+}>;
+
+export type PlanetaryNodeSnapshot = Readonly<{
+  nodeId: string;
+  tick?: number;
+  identities: ReadonlyArray<PlanetaryIdentity>;
+  substrates: ReadonlyArray<PlanetarySubstrate>;
+  quantumBranches: ReadonlyArray<QuantumBranch>;
+  canon: InstituteCanon;
+  truthSignatures: Readonly<Record<string, string>>;
+  inferenceDelta?: Readonly<Record<string, unknown>>;
+}>;
+
+export type PlanetaryNode = Readonly<{
+  nodeId: string;
+  tick: number;
+  identities: ReadonlyArray<PlanetaryIdentity>;
+  substrates: ReadonlyArray<PlanetarySubstrate>;
+  quantumBranches: ReadonlyArray<QuantumBranch>;
+  canon: InstituteCanon;
+  truthSignatures: Readonly<Record<string, string>>;
+  inferenceDelta: Readonly<Record<string, unknown>>;
+}>;
+
+export type PlanetaryDelta = Readonly<{
+  nodeId: string;
+  tick: number;
+  simDelta: Readonly<{
+    identities: ReadonlyArray<PlanetaryIdentity>;
+    substrates: ReadonlyArray<PlanetarySubstrate>;
+  }>;
+  inferenceDelta: Readonly<Record<string, unknown>>;
+  quantumDelta: Readonly<{ branches: ReadonlyArray<QuantumBranch> }>;
+  instituteDelta: Readonly<{
+    canon: InstituteCanon;
+    truthSignatures: Readonly<Record<string, string>>;
+  }>;
+}>;
+
+export type PlanetarySyncPacket = Readonly<{
+  deltas: ReadonlyArray<PlanetaryDelta>;
+  globalTick: number;
+  signature: string;
+}>;
+
+export type PlanetarySynchronization = Readonly<{
+  at: number;
+  coordinatorIdentity: string;
+  nodes: ReadonlyArray<PlanetaryNodeSnapshot>;
+  governance: PlanetaryGovernanceContext;
+  collapsePolicy: PlanetaryQuantumState["collapsePolicy"];
+}>;
+
+export type PlanetaryState = Readonly<{
+  globalTick: number;
+  nodes: Readonly<Record<string, PlanetaryNode>>;
+  identities: Readonly<Record<string, PlanetaryIdentity>>;
+  substrates: Readonly<Record<string, PlanetarySubstrate>>;
+  substrate: PlanetarySubstrate;
+  quantum: PlanetaryQuantumState;
+  canon: PlanetaryCanon;
+  governance: PlanetaryGovernanceContext;
+  coordinatorIdentity: string;
+  synchronizedAt: number;
+  packetSignature: string;
+  advisories: ReadonlyArray<string>;
+}>;
+
+export type PlanetaryRuntimeState = PlanetaryState;
+
+export type PlanetaryExecutionState = PlanetaryRuntimeState;

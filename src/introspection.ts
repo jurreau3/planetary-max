@@ -17,21 +17,110 @@ import {
   EpistemicTimeline,
   InstituteCanon,
 } from "./types";
+import { runInference } from "./inference";
 
-import { QUANTUM_STATE_KEY } from "./quantumn";
+export type IntrospectionKind =
+  | "sim.behavior"
+  | "identity.timeline"
+  | "windows.focus"
+  | "windows.state"
+  | "windows.timeline"
+  | "umbrella.enforcement"
+  | "kernel.heatmap"
+  | "tec.pipeline"
+  | "substrate.state"
+  | "messages"
+  | "logs"
+  | "inference"
+  | "institute.canon"
+  | "institute.truths"
+  | "institute.timeline"
+  | "institute.stability"
+  | "institute.signature"
+  | "institute.timelines"
+  | "planetary.identity"
+  | "planetary.substrate"
+  | "planetary.quantum"
+  | "planetary.canon"
+  | "planetary.governance"
+  | "planetary.state";
 
-// -------------------------------------------------------------
-// Auth Context
-// -------------------------------------------------------------
+type SimulationIntrospectionState = PortalKernelState & Readonly<{
+  eventLog: ReadonlyArray<SimEvent>;
+  diffLog: ReadonlyArray<SimTickDiff>;
+  tecTasks: Readonly<Record<string, SimTecTaskState>>;
+  quantum: QuantumOverlay;
+}>;
 
-type AuthContext = {
-  identity: string | null;
-};
+const KERNEL_OBJECT_NAME = "portal-kernel";
+const SIMULATION_STATE_URL = "https://portal-kernel.invalid/kernel/sim/state";
+const INSTITUTE_STATE_URL = "https://portal-kernel.invalid/kernel/institute/state";
+const PLANETARY_STATE_URL = "https://portal-kernel.invalid/kernel/planetary/state";
 
-function requireAuth(ctx: AuthContext) {
-  if (!ctx.identity) {
-    throw new Error("UNAUTHENTICATED_INTROSPECTION");
-  }
+const INSTITUTE_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> =
+  new Set<IntrospectionKind>([
+    "institute.canon",
+    "institute.truths",
+    "institute.timeline",
+    "institute.stability",
+    "institute.signature",
+    "institute.timelines",
+  ]);
+
+const PLANETARY_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> =
+  new Set<IntrospectionKind>([
+    "planetary.identity",
+    "planetary.substrate",
+    "planetary.quantum",
+    "planetary.canon",
+    "planetary.governance",
+    "planetary.state",
+  ]);
+
+const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<IntrospectionKind>([
+  "sim.behavior",
+  "identity.timeline",
+  "windows.focus",
+  "windows.state",
+  "windows.timeline",
+  "tec.pipeline",
+  "substrate.state",
+  "messages",
+  "logs",
+  "inference",
+  "quantum.state",
+  "quantum.branches",
+  "quantum.curvature",
+  "quantum.signature",
+]);
+
+export function attachIntrospectionRoutes(
+  app: Hono<{ Bindings: Bindings }>,
+): void {
+  app.get("/api/introspection/sim/behavior", introspectionHandler("sim.behavior"));
+  app.get("/api/introspection/identity/timeline", introspectionHandler("identity.timeline"));
+  app.get("/api/introspection/windows/focus", introspectionHandler("windows.focus"));
+  app.get("/api/introspection/windows/state", introspectionHandler("windows.state"));
+  app.get("/api/introspection/windows/timeline", introspectionHandler("windows.timeline"));
+  app.get("/api/introspection/umbrella/enforcement", introspectionHandler("umbrella.enforcement"));
+  app.get("/api/introspection/kernel/heatmap", introspectionHandler("kernel.heatmap"));
+  app.get("/api/introspection/tec/pipeline", introspectionHandler("tec.pipeline"));
+  app.get("/api/introspection/substrate/state", introspectionHandler("substrate.state"));
+  app.get("/api/introspection/messages", introspectionHandler("messages"));
+  app.get("/api/introspection/logs", introspectionHandler("logs"));
+  app.get("/api/introspection/inference", introspectionHandler("inference"));
+  app.get("/api/introspection/institute/canon", introspectionHandler("institute.canon"));
+  app.get("/api/introspection/institute/truths", introspectionHandler("institute.truths"));
+  app.get("/api/introspection/institute/timeline", introspectionHandler("institute.timeline"));
+  app.get("/api/introspection/institute/stability", introspectionHandler("institute.stability"));
+  app.get("/api/introspection/institute/signature", introspectionHandler("institute.signature"));
+  app.get("/api/introspection/institute/timelines", introspectionHandler("institute.timelines"));
+  app.get("/api/introspection/planetary/identity", introspectionHandler("planetary.identity"));
+  app.get("/api/introspection/planetary/substrate", introspectionHandler("planetary.substrate"));
+  app.get("/api/introspection/planetary/quantum", introspectionHandler("planetary.quantum"));
+  app.get("/api/introspection/planetary/canon", introspectionHandler("planetary.canon"));
+  app.get("/api/introspection/planetary/governance", introspectionHandler("planetary.governance"));
+  app.get("/api/introspection/planetary/state", introspectionHandler("planetary.state"));
 }
 
 // -------------------------------------------------------------
@@ -70,16 +159,15 @@ export function introspectQuantumSignature(
   return overlay ? overlay.signature : null;
 }
 
-// -------------------------------------------------------------
-// Simulation Introspection
-// -------------------------------------------------------------
-
-export function introspectSimBehavior(
-  sim: Record<string, unknown>,
-  ctx: AuthContext
-) {
-  requireAuth(ctx);
-  return sim.behavior ?? null;
+function planetaryIntrospectionResult(kind: IntrospectionKind, state: PlanetaryState): unknown {
+  if (kind === "planetary.identity") return state.identities;
+  if (kind === "planetary.substrate") return state.substrate;
+  if (kind === "planetary.quantum") return state.quantum;
+  if (kind === "planetary.canon") return state.canon;
+  if (kind === "planetary.governance") {
+    return { ...state.governance, advisories: state.advisories };
+  }
+  return state;
 }
 
 export function introspectSimSubstrate(
@@ -236,12 +324,12 @@ export function introspectPlanetaryQuantum(
   return planetary.nodes.map((n) => n.quantum);
 }
 
-export function introspectPlanetaryCanon(
-  planetary: PlanetaryState,
-  ctx: AuthContext
-) {
-  requireAuth(ctx);
-  return planetary.nodes.map((n) => n.canon);
+function isPlanetaryState(value: unknown): value is PlanetaryState {
+  return isRecord(value) && typeof value.globalTick === "number" && isRecord(value.nodes) &&
+    isRecord(value.identities) && isRecord(value.substrates) && isRecord(value.substrate) &&
+    isRecord(value.quantum) && isRecord(value.canon) && isRecord(value.governance) &&
+    typeof value.synchronizedAt === "number" && typeof value.packetSignature === "string" &&
+    Array.isArray(value.advisories);
 }
 
 export function introspectPlanetaryGovernance(
