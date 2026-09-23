@@ -1,5 +1,13 @@
 import { Bindings } from "./types";
 
+export type KernelEnvelope = {
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  identity: string;
+  governanceContext: Record<string, unknown>;
+};
+
 export type KernelResult = {
   ok: boolean;
   result?: unknown;
@@ -14,21 +22,21 @@ export function isRecord(v: unknown): v is Record<string, unknown> {
 export function failureResponse(
   code: string,
   message: string,
-  status: number
+  status: number,
 ): Response {
   return Response.json(
     {
       ok: false,
       error: { code, message },
     },
-    { status }
+    { status },
   );
 }
 
 export function failureResult(
   code: string,
   message: string,
-  envelope: KernelEnvelope
+  envelope: KernelEnvelope,
 ): KernelResult {
   return {
     ok: false,
@@ -46,7 +54,7 @@ export function resultResponse(result: KernelResult, status: number): Response {
 
 export async function readJsonObject(
   req: Request,
-  message: string
+  message: string,
 ): Promise<Record<string, unknown> | Response> {
   try {
     const json = await req.json();
@@ -62,7 +70,7 @@ export async function readJsonObject(
 export async function readKernelResult(
   response: Response,
   envelope: KernelEnvelope,
-  kernelName: string
+  kernelName: string,
 ): Promise<KernelResult> {
   let body: unknown;
   try {
@@ -70,7 +78,10 @@ export async function readKernelResult(
   } catch {
     return {
       ok: false,
-      error: { code: "INVALID_KERNEL_RESPONSE", message: "Kernel returned non‑JSON" },
+      error: {
+        code: "INVALID_KERNEL_RESPONSE",
+        message: "Kernel returned non‑JSON",
+      },
       meta: { kernel: kernelName, messageId: envelope.id },
     };
   }
@@ -78,7 +89,10 @@ export async function readKernelResult(
   if (!isRecord(body)) {
     return {
       ok: false,
-      error: { code: "INVALID_KERNEL_RESPONSE", message: "Kernel returned non‑object" },
+      error: {
+        code: "INVALID_KERNEL_RESPONSE",
+        message: "Kernel returned non‑object",
+      },
       meta: { kernel: kernelName, messageId: envelope.id },
     };
   }
@@ -96,20 +110,12 @@ export async function readKernelResult(
   };
 }
 
-export type KernelEnvelope = {
-  id: string;
-  type: string;
-  payload: Record<string, unknown>;
-  identity: string;
-  governanceContext: Record<string, unknown>;
-};
-
 export function createEnvelope(
   type: string,
   payload: Record<string, unknown>,
   identity: string,
   governanceContext: Record<string, unknown>,
-  umbrellaMode: string
+  umbrellaMode: string,
 ): KernelEnvelope {
   return {
     id: crypto.randomUUID(),
