@@ -472,6 +472,10 @@ describe('Hono Worker routes', () => {
     ['messages', 'messages'],
     ['logs', 'logs'],
     ['inference', 'inference'],
+    ['quantum/state', 'quantum.state'],
+    ['quantum/branches', 'quantum.branches'],
+    ['quantum/curvature', 'quantum.curvature'],
+    ['quantum/signature', 'quantum.signature'],
   ])('exposes introspection route %s', async (route, kind) => {
     const response = await app.request(`/api/introspection/${route}`, undefined, makeBindings());
     expect(response.status).toBe(200);
@@ -792,6 +796,10 @@ describe('PortalKernel simulation engine', () => {
     const substrate = await app.request('/api/introspection/substrate/state', undefined, bindings);
     const messages = await app.request('/api/introspection/messages', undefined, bindings);
     const inference = await app.request('/api/introspection/inference', undefined, bindings);
+    const quantumState = await app.request('/api/introspection/quantum/state', undefined, bindings);
+    const quantumBranches = await app.request('/api/introspection/quantum/branches', undefined, bindings);
+    const quantumCurvature = await app.request('/api/introspection/quantum/curvature', undefined, bindings);
+    const quantumSignature = await app.request('/api/introspection/quantum/signature', undefined, bindings);
 
     expect(await behavior.json()).toMatchObject({ result: { activeAgents: 1, anomalies: 1, tick: 1 } });
     expect(await windows.json()).toMatchObject({ result: [{ id: 'window-1', focus: true }] });
@@ -804,7 +812,29 @@ describe('PortalKernel simulation engine', () => {
       'introspection-shift',
     ]);
     expect(await inference.json()).toMatchObject({
-      result: { deterministic: true, tick: 1, processedEvents: 3, reversibleDiffs: 1 },
+      result: {
+        facts: expect.arrayContaining([
+          expect.objectContaining({ id: 'fact:event:introspection-agent', kind: 'agent' }),
+          expect.objectContaining({ id: 'fact:event:introspection-window', kind: 'window' }),
+          expect.objectContaining({ id: 'fact:event:introspection-shift', kind: 'substrate' }),
+        ]),
+        hypotheses: expect.any(Array),
+        recommendations: expect.any(Array),
+      },
+    });
+    expect(await quantumState.json()).toMatchObject({
+      result: { collapsePolicy: 'deterministic', branches: expect.any(Array) },
+    });
+    expect(await quantumBranches.json()).toMatchObject({
+      result: expect.arrayContaining([
+        expect.objectContaining({ probability: expect.any(Number), signature: expect.stringMatching(/^MAX-/) }),
+      ]),
+    });
+    expect(await quantumCurvature.json()).toMatchObject({ result: { 'identity-1': expect.any(Number) } });
+    expect(await quantumSignature.json()).toMatchObject({
+      result: expect.arrayContaining([
+        expect.objectContaining({ id: expect.stringMatching(/^MAX-/), influence: { 'identity-1': expect.any(Number) } }),
+      ]),
     });
   });
 });

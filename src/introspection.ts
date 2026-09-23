@@ -2,11 +2,13 @@ import type { Context, Hono } from "hono";
 import type {
   Bindings,
   PortalKernelState,
+  QuantumOverlay,
   SimEvent,
   SimTecTaskState,
   SimTickDiff,
   SimWindowState,
 } from "./types";
+import { runInference } from "./inference";
 
 export type IntrospectionKind =
   | "sim.behavior"
@@ -20,12 +22,17 @@ export type IntrospectionKind =
   | "substrate.state"
   | "messages"
   | "logs"
-  | "inference";
+  | "inference"
+  | "quantum.state"
+  | "quantum.branches"
+  | "quantum.curvature"
+  | "quantum.signature";
 
 type SimulationIntrospectionState = PortalKernelState & Readonly<{
   eventLog: ReadonlyArray<SimEvent>;
   diffLog: ReadonlyArray<SimTickDiff>;
   tecTasks: Readonly<Record<string, SimTecTaskState>>;
+  quantum: QuantumOverlay;
 }>;
 
 const KERNEL_OBJECT_NAME = "portal-kernel";
@@ -44,6 +51,10 @@ const INTROSPECTION_ROUTES: ReadonlyArray<readonly [string, IntrospectionKind]> 
   ["/api/introspection/messages", "messages"],
   ["/api/introspection/logs", "logs"],
   ["/api/introspection/inference", "inference"],
+  ["/api/introspection/quantum/state", "quantum.state"],
+  ["/api/introspection/quantum/branches", "quantum.branches"],
+  ["/api/introspection/quantum/curvature", "quantum.curvature"],
+  ["/api/introspection/quantum/signature", "quantum.signature"],
 ];
 
 const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<IntrospectionKind>([
@@ -57,6 +68,10 @@ const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<I
   "messages",
   "logs",
   "inference",
+  "quantum.state",
+  "quantum.branches",
+  "quantum.curvature",
+  "quantum.signature",
 ]);
 
 export function attachIntrospectionRoutes(
@@ -167,14 +182,12 @@ function introspectionResult(
   if (kind === "messages") return state.eventLog;
   if (kind === "logs") return state.diffLog;
   if (kind === "inference") {
-    return {
-      deterministic: true,
-      tick: state.tick,
-      processedEvents: state.eventLog.length,
-      reversibleDiffs: state.diffLog.length,
-      lastDiff: state.diffLog.at(-1) ?? null,
-    };
+    return runInference({ simulation: state, quantum: state.quantum });
   }
+  if (kind === "quantum.state") return state.quantum.state;
+  if (kind === "quantum.branches") return state.quantum.state.branches;
+  if (kind === "quantum.curvature") return state.quantum.curvature;
+  if (kind === "quantum.signature") return state.quantum.signatures;
   return {};
 }
 
@@ -212,7 +225,8 @@ function isSimulationState(value: unknown): value is SimulationIntrospectionStat
     typeof value.tick === "number" &&
     Array.isArray(value.eventLog) &&
     Array.isArray(value.diffLog) &&
-    isRecord(value.tecTasks)
+    isRecord(value.tecTasks) &&
+    isRecord(value.quantum)
   );
 }
 

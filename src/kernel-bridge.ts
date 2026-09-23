@@ -6,6 +6,7 @@ import type {
   KernelResult,
   UmbrellaMode,
 } from "./types";
+import { governanceInferenceFromContext } from "./inference";
 
 const KERNEL_OBJECT_NAME = "portal-kernel";
 const KERNEL_BRIDGE_URL = "https://portal-kernel.invalid/api/kernel/message";
@@ -198,10 +199,12 @@ function governanceFromEnvelope(envelope: KernelEnvelope): GovernanceMetadata {
       ? envelope.governanceContext.mode
       : undefined,
   );
+  const inference = governanceInferenceFromContext(envelope.governanceContext);
   return {
     mode,
     decision: mode === "off" ? "bypassed" : mode === "advisory" ? "advisory" : "allowed",
     deltas: [],
+    ...(mode === "advisory" && inference !== undefined ? { inference } : {}),
   };
 }
 

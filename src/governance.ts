@@ -1,4 +1,6 @@
 import type { GovernanceMetadata, KernelEnvelope, UmbrellaMode } from "./types";
+import { governanceInferenceFromContext } from "./inference";
+import { quantumGovernanceFromContext } from "./quantumn";
 
 export function resolveUmbrellaMode(value: string | undefined): UmbrellaMode {
   return value === "strict" || value === "advisory" || value === "off" ? value : "strict";
@@ -24,7 +26,13 @@ export function evaluateGovernance(
     ? envelope.payload.operation
     : envelope.type;
   const context: Readonly<Record<string, unknown>> = envelope.governanceContext;
+  const inference = governanceInferenceFromContext(context);
+  const quantum = quantumGovernanceFromContext(context);
   const deltas: Array<Readonly<Record<string, unknown>>> = [];
+
+  if (context.quantum !== undefined && quantum === undefined) {
+    deltas.push(Object.freeze({ rule: "quantum-context", valid: false }));
+  }
 
   if (context.decision === "denied" || context.deny === true) {
     deltas.push(Object.freeze({ rule: "explicit-deny", lane }));
@@ -38,6 +46,20 @@ export function evaluateGovernance(
   if (envelope.payload.structuralTruth === false) {
     deltas.push(Object.freeze({ rule: "structural-truth", invariant: "structuralTruth" }));
   }
+  if (
+    quantum !== undefined &&
+    typeof envelope.payload.branchId === "string" &&
+    !quantum.allowedBranches.includes(envelope.payload.branchId)
+  ) {
+    deltas.push(Object.freeze({ rule: "quantum-branch", branchId: envelope.payload.branchId }));
+  }
+  if (
+    quantum?.curvatureLimit !== undefined &&
+    typeof envelope.payload.curvature === "number" &&
+    Math.abs(envelope.payload.curvature) > quantum.curvatureLimit
+  ) {
+    deltas.push(Object.freeze({ rule: "quantum-curvature", limit: quantum.curvatureLimit }));
+  }
   if (Array.isArray(context.allowedIdentities) && !context.allowedIdentities.includes(envelope.identity)) {
     deltas.push(Object.freeze({ rule: "identity-physics", identityAccepted: false }));
   }
@@ -50,6 +72,7 @@ export function evaluateGovernance(
       ? { rationale: denied ? "Umbrella policy denied the operation" : "Umbrella policy recorded advisory findings" }
       : {}),
     deltas: Object.freeze(deltas),
+    ...(mode === "advisory" && inference !== undefined ? { inference } : {}),
   });
 }
 
