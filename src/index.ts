@@ -1,9 +1,21 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { evaluateGovernance, resolveUmbrellaMode } from "./governance";
+
+// Governance
+import {
+  evaluateGovernance,
+  resolveUmbrellaMode,
+  governanceInferenceFromContext,
+} from "./governance";
+
+// Identity
 import { authenticatedIdentity } from "./identity";
+
+// Introspection
 import { attachIntrospectionRoutes } from "./introspection";
+
+// Kernel Bridge
 import {
   callKernel,
   createEnvelope,
@@ -13,7 +25,52 @@ import {
   readJsonObject,
   readKernelResult,
   resultResponse,
+  extractLaneData,
 } from "./kernel-bridge";
+
+// Quantum Engine
+import {
+  generateQuantumBranches,
+  generateQuantumOverlay,
+  collapseQuantumBranches,
+  normalizeProbabilities,
+  deriveIdentityCurvature,
+  quantumGovernanceFromContext,
+} from "./quantumn";
+
+// Inference Engine
+import {
+  detectInferencePatterns,
+  extractKernelResultFacts,
+  extractQuantumFacts,
+  extractSimulationFacts,
+  generateInferenceRecommendations,
+  runInference,
+} from "./inference";
+
+// Institute Engine
+import {
+  formInstituteTruth,
+  initialInstituteState,
+  isInstituteFormationFailure,
+  MIN_INSTITUTE_PATTERN_TICKS,
+  MIN_INSTITUTE_HYPOTHESIS_CONFIDENCE,
+  MIN_INSTITUTE_STABILITY,
+  parseTruthFormation,
+} from "./institute";
+
+// Planetary Engine
+import {
+  initialPlanetaryState,
+  isPlanetaryFailure,
+  parsePlanetarySynchronization,
+  synchronizePlanetaryState,
+} from "./planetary";
+
+// Portal Kernel
+import { PortalKernel, runPortalKernel } from "./portal-kernel";
+
+// Types
 import type {
   Bindings,
   GovernanceMetadata,
@@ -74,9 +131,11 @@ app.post("/api/kernel/message", async (context: Context<{ Bindings: Bindings }>)
 app.get("/api/autonomy", (context: Context<{ Bindings: Bindings }>): Promise<Response> =>
   routeKernelMessage(context.env, context.req.header("Authorization"), "autonomy.state", {}),
 );
+
 app.get("/universe/state", (context: Context<{ Bindings: Bindings }>): Promise<Response> =>
   routeKernelMessage(context.env, context.req.header("Authorization"), "universe.state", {}),
 );
+
 app.get("/universe/umbrella", (context: Context<{ Bindings: Bindings }>): Promise<Response> =>
   routeKernelMessage(context.env, context.req.header("Authorization"), "universe.umbrella", {}),
 );
@@ -240,87 +299,6 @@ async function kernelResponse(env: Bindings, envelope: KernelEnvelope): Promise<
     return failureResponse("KERNEL_UNAVAILABLE", "PortalKernel bridge unavailable", 503);
   }
 }
-
-export { createEnvelope, extractLaneData, readKernelResult } from "./kernel-bridge";
-export { resolveUmbrellaMode } from "./governance";
-export {
-  detectInferencePatterns,
-  extractKernelResultFacts,
-  extractQuantumFacts,
-  extractSimulationFacts,
-  generateInferenceRecommendations,
-} from "./inference";
-export {
-  formInstituteTruth,
-  initialInstituteState,
-  isInstituteFormationFailure,
-  MIN_INSTITUTE_PATTERN_TICKS,
-  MIN_INSTITUTE_HYPOTHESIS_CONFIDENCE,
-  MIN_INSTITUTE_STABILITY,
-  parseTruthFormation,
-} from "./institute";
-export {
-  initialPlanetaryState,
-  isPlanetaryFailure,
-  parsePlanetarySynchronization,
-  synchronizePlanetaryState,
-} from "./planetary";
-export {
-  collapseQuantumBranches,
-  deriveIdentityCurvature,
-  generateQuantumBranches,
-  generateQuantumOverlay,
-  normalizeProbabilities,
-  quantumGovernanceFromContext,
-  runInference,
-} from "./quantumn";
-export { PortalKernel } from "./portal-kernel";
-export type {
-  Bindings,
-  EpistemicEvent,
-  EpistemicEventAction,
-  EpistemicTimeline,
-  GovernanceInference,
-  InferenceArtifacts,
-  InferenceFact,
-  InferenceFactKind,
-  InferenceHypothesis,
-  InferenceRecommendation,
-  InferenceRecommendationTarget,
-  InstituteCanon,
-  InstituteInferenceFact,
-  InstituteInferenceHypothesis,
-  InstituteQuantumBranch,
-  InstituteSimulationDelta,
-  InstituteState,
-  InstituteTruth,
-  InstituteTruthFormation,
-  KernelEnvelope,
-  KernelLane,
-  KernelResult,
-  PortalKernelState,
-  PlanetaryAnomaly,
-  PlanetaryCanon,
-  PlanetaryGovernanceContext,
-  PlanetaryIdentity,
-  PlanetaryNodeSnapshot,
-  PlanetaryQuantumState,
-  PlanetaryState,
-  PlanetarySubstrate,
-  PlanetarySynchronization,
-  QuantumBranch,
-  QuantumCollapsePolicy,
-  QuantumGovernanceContext,
-  QuantumOverlay,
-  QuantumSignature,
-  QuantumState,
-  SimAgentState,
-  SimEvent,
-  SimEventType,
-  SimSubstrateState,
-  SimTickDiff,
-  SimWindowState,
-} from "./types";
 
 export default {
   async fetch(request: Request, env: Bindings, context: ExecutionContext): Promise<Response> {
