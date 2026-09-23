@@ -1,29 +1,48 @@
-import { QuantumOverlay } from "./types";
+import {
+  QuantumBranch,
+  QuantumOverlay,
+  QuantumCollapsePolicy,
+} from "./types";
 
-export type InferenceArtifacts = {
-  overlay: QuantumOverlay;
-  facts: Record<string, unknown>[];
-};
-
-export function extractKernelResultFacts(
-  overlay: QuantumOverlay
-): Record<string, unknown>[] {
+export function generateQuantumBranches(
+  baseState: Record<string, unknown>
+): QuantumBranch[] {
   return [
-    { signature: overlay.signature },
-    { curvature: overlay.curvature },
+    {
+      id: "canonical",
+      probability: 1,
+      stateDelta: {},
+      signature: "sha256:canonical",
+    },
   ];
 }
 
-export function runInference(
-  baseState: Record<string, unknown>
-): InferenceArtifacts {
-  const overlay: QuantumOverlay = {
-    branches: [],
-    curvature: 1,
-    signature: "sha256:inference",
-    collapsePolicy: "deterministic",
-  };
+export function normalizeProbabilities(
+  branches: QuantumBranch[]
+): QuantumBranch[] {
+  const total = branches.reduce((sum, b) => sum + b.probability, 0) || 1;
+  return branches.map((b) => ({
+    ...b,
+    probability: b.probability / total,
+  }));
+}
 
-  const facts = extractKernelResultFacts(overlay);
-  return { overlay, facts };
+export function generateQuantumOverlay(
+  baseState: Record<string, unknown>,
+  policy: QuantumCollapsePolicy
+): QuantumOverlay {
+  const branches = normalizeProbabilities(generateQuantumBranches(baseState));
+  return {
+    branches,
+    curvature: 1,
+    signature: "sha256:overlay",
+    collapsePolicy: policy,
+  };
+}
+
+export function collapseQuantumBranches(
+  overlay: QuantumOverlay,
+  policy: QuantumCollapsePolicy
+): Record<string, unknown> {
+  return overlay.branches[0].stateDelta;
 }
