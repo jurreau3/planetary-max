@@ -5,6 +5,8 @@ import {
   readKernelResult,
   runInference,
   type InferenceArtifacts,
+  type InferenceHypothesis,
+  type InferenceRecommendation,
   type KernelEnvelope,
   type KernelResult,
   type SimEvent,
@@ -108,8 +110,12 @@ describe("MAX-Inference", () => {
     ];
     const twice: InferenceArtifacts = runInference({ simulation: simulation(events.slice(0, 2)) });
     const threeTimes: InferenceArtifacts = runInference({ simulation: simulation(events) });
-    const twiceHypothesis = twice.hypotheses.find((item) => item.tags.includes("recurring-behavior"));
-    const threeTimesHypothesis = threeTimes.hypotheses.find((item) => item.tags.includes("recurring-behavior"));
+    const twiceHypothesis = twice.hypotheses.find(
+      (item: InferenceHypothesis): boolean => item.tags.includes("recurring-behavior"),
+    );
+    const threeTimesHypothesis = threeTimes.hypotheses.find(
+      (item: InferenceHypothesis): boolean => item.tags.includes("recurring-behavior"),
+    );
 
     expect(twiceHypothesis?.supportingFacts).toHaveLength(2);
     expect(threeTimesHypothesis?.supportingFacts).toHaveLength(3);
@@ -119,8 +125,12 @@ describe("MAX-Inference", () => {
   it("recommends a transparent substrate adjustment for instability", () => {
     const shift = event("shift-1", "substrate.shift", { magnitude: 35 }, 1);
     const result: InferenceArtifacts = runInference({ simulation: simulation([shift], 65) });
-    const hypothesis = result.hypotheses.find((item) => item.tags.includes("substrate-instability"));
-    const recommendation = result.recommendations.find((item) => item.target === "substrate");
+    const hypothesis = result.hypotheses.find(
+      (item: InferenceHypothesis): boolean => item.tags.includes("substrate-instability"),
+    );
+    const recommendation = result.recommendations.find(
+      (item: InferenceRecommendation): boolean => item.target === "substrate",
+    );
 
     expect(hypothesis?.supportingFacts).toEqual([
       "fact:event:shift-1",

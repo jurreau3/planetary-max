@@ -838,6 +838,10 @@ describe('Planetary Mode', () => {
             globalSignature: 'quantum-stable',
             globalCurvature: 0.3,
             collapsePolicy: 'governed',
+            branches: [expect.objectContaining({
+              id: 'planetary:quantum-stable',
+              stateDelta: { node: 'planetary', curvature: 0.3 },
+            })],
           },
           identities: { 'identity-1': { signature: 'identity-stable', curvature: 0.4 } },
         },

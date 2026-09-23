@@ -1,344 +1,276 @@
+//
+// MAX‑Institute Unified Type Surface
+// Portal‑OS Wing
+// Planetary‑MAX Quantum Substrate
+//
+
+// -------------------------------------------------------------
+// Core Kernel Types
+// -------------------------------------------------------------
+
+export type Bindings = Record<string, unknown>;
+
+export type KernelLane = "sim" | "identity" | "windows" | "tec" | "umbrella";
+
+export type KernelEnvelope = {
+  lane: KernelLane;
+  payload: unknown;
+  identity?: string | null;
+  governance?: GovernanceMetadata | null;
+};
+
+export type KernelResult = {
+  ok: boolean;
+  status: number;
+  body: unknown;
+  governance?: GovernanceMetadata | null;
+};
+
+export type PortalKernelState = {
+  sim: SimSubstrateState;
+  windows: Record<string, SimWindowState>;
+  identity: Record<string, SimAgentState>;
+  tec: Record<string, SimTecTaskState>;
+  substrate: SimSubstrateState;
+};
+
+// -------------------------------------------------------------
+// Governance Types
+// -------------------------------------------------------------
+
 export type UmbrellaMode = "strict" | "advisory" | "off";
 
-export type GovernanceDecision = "allowed" | "denied" | "advisory" | "bypassed";
+export type GovernanceMetadata = {
+  mode: UmbrellaMode;
+  decision: "allow" | "deny" | "advise";
+  reason?: string;
+};
 
-export type InferenceFactKind = "agent" | "window" | "substrate" | "governance" | "tec";
-
-export type InferenceFact = Readonly<{
-  id: string;
-  kind: InferenceFactKind;
-  subjectId: string;
-  at: number;
-  data: Readonly<Record<string, unknown>>;
-}>;
-
-export type InferenceHypothesis = Readonly<{
-  id: string;
-  description: string;
+export type GovernanceInference = {
   confidence: number;
-  supportingFacts: ReadonlyArray<string>;
-  tags: ReadonlyArray<string>;
-}>;
+  advisory?: string;
+};
 
-export type InferenceRecommendationTarget =
-  | "governance"
-  | "simulation"
-  | "substrate"
-  | "identity"
-  | "tec";
+// -------------------------------------------------------------
+// Simulation Types
+// -------------------------------------------------------------
 
-export type InferenceRecommendation = Readonly<{
+export type SimEventType =
+  | "agent.move"
+  | "agent.identity"
+  | "window.focus"
+  | "window.state"
+  | "tec.task"
+  | "substrate.adjust";
+
+export type SimEvent = {
   id: string;
-  target: InferenceRecommendationTarget;
-  action: string;
-  rationale: string;
-  confidence: number;
-  relatedHypotheses: ReadonlyArray<string>;
-}>;
+  type: SimEventType;
+  identityId?: string;
+  windowId?: string;
+  payload?: unknown;
+};
 
-export type InferenceArtifacts = Readonly<{
-  facts: ReadonlyArray<InferenceFact>;
-  hypotheses: ReadonlyArray<InferenceHypothesis>;
-  recommendations: ReadonlyArray<InferenceRecommendation>;
-}>;
+export type SimAgentState = {
+  id: string;
+  position?: { x: number; y: number };
+  identity?: string;
+};
 
-export type GovernanceInference = Readonly<{
-  hypotheses: ReadonlyArray<InferenceHypothesis>;
-  recommendations: ReadonlyArray<InferenceRecommendation>;
-}>;
+export type SimWindowState = {
+  id: string;
+  focusHistory: string[];
+  state: Record<string, unknown>;
+};
 
-export type QuantumCollapsePolicy = "deterministic" | "probabilistic" | "governed";
+export type SimTecTaskState = {
+  id: string;
+  kind: string;
+  progress: number;
+};
 
-export type QuantumBranch = Readonly<{
+export type SimSubstrateState = {
+  stability: number;
+};
+
+export type SimTickDiff = {
+  deltas: Record<string, unknown>;
+  events: SimEvent[];
+};
+
+// -------------------------------------------------------------
+// Quantum Types
+// -------------------------------------------------------------
+
+export type QuantumBranch = {
   id: string;
   probability: number;
   stateDelta: Readonly<Record<string, unknown>>;
   signature: string;
-}>;
+};
 
-export type QuantumState = Readonly<{
-  id: string;
-  branches: ReadonlyArray<QuantumBranch>;
+export type QuantumCollapsePolicy =
+  | "deterministic"
+  | "probabilistic"
+  | "governed";
+
+export type QuantumOverlay = {
+  branches: Readonly<QuantumBranch[]>;
+  curvature: number;
+  signature: string;
   collapsePolicy: QuantumCollapsePolicy;
-  meta: Readonly<Record<string, unknown>>;
-}>;
+};
 
-export type QuantumSignature = Readonly<{
-  id: string;
-  curvature: number;
-  influence: Readonly<Record<string, number>>;
-}>;
-
-export type QuantumGovernanceContext = Readonly<{
-  allowedBranches: ReadonlyArray<string>;
-  forcedCollapse?: string;
-  curvatureLimit?: number;
-  probabilityBias?: Readonly<Record<string, number>>;
-}>;
-
-export type QuantumOverlay = Readonly<{
-  state: QuantumState;
-  curvature: Readonly<Record<string, number>>;
-  signatures: ReadonlyArray<QuantumSignature>;
-  selectedBranchId: string;
-}>;
-
-export type GovernanceContext = Readonly<
-  Record<string, unknown> & {
-    inference?: GovernanceInference;
-    quantum?: QuantumGovernanceContext;
-  }
->;
-
-export type KernelEnvelope = Readonly<{
-  id: string;
-  type: string;
-  payload: Readonly<Record<string, unknown>>;
-  identity: string;
-  governanceContext: GovernanceContext;
-}>;
-
-export type GovernanceMetadata = Readonly<{
+export type QuantumGovernanceContext = {
   mode: UmbrellaMode;
-  decision: GovernanceDecision;
-  rationale?: string;
-  deltas: ReadonlyArray<Readonly<Record<string, unknown>>>;
-  inference?: GovernanceInference;
-}>;
+  identity?: string;
+};
 
-export type KernelLane = Readonly<{
-  name: string;
-  result: Readonly<{
-    results: ReadonlyArray<Readonly<{
-      result: Readonly<{
-        data: Readonly<Record<string, unknown>>;
-        meta: Readonly<{ source: string; governance: UmbrellaMode }>;
-      }>;
-    }>>;
-  }>;
-}>;
+export type QuantumSignature = string;
 
-export type KernelResult = Readonly<{
-  ok: boolean;
-  result?: unknown;
-  error?: Readonly<{ code: string; message: string }>;
-  meta?: Readonly<Record<string, unknown>>;
-}>;
+export type QuantumState = {
+  overlay: QuantumOverlay | null;
+};
 
-export interface FetcherBinding {
-  fetch(request: Request): Promise<Response>;
-}
+// -------------------------------------------------------------
+// Planetary Types
+// -------------------------------------------------------------
 
-export interface KernelNamespaceBinding {
-  idFromName(name: string): DurableObjectId;
-  get(id: DurableObjectId): FetcherBinding;
-}
-
-export type Bindings = Readonly<{
-  PORTAL_KERNEL: KernelNamespaceBinding;
-  MAX_OS_1: FetcherBinding;
-  IDENTITY_JWT_SECRET: string;
-  IDENTITY_JWT_ISSUER: string;
-  IDENTITY_JWT_AUDIENCE: string;
-  PLANETARY_MODE: string;
-  UMBRELLA_ENFORCEMENT: string;
-}>;
-
-export type IdentityEnvironment = Pick<
-  Bindings,
-  "IDENTITY_JWT_SECRET" | "IDENTITY_JWT_ISSUER" | "IDENTITY_JWT_AUDIENCE"
->;
-
-export type KernelEnvironment = Pick<Bindings, "UMBRELLA_ENFORCEMENT">;
-
-export type SimIdentity = Readonly<{
+export type PlanetaryIdentity = {
   id: string;
-  kind: "agent" | "window" | "substrate";
-  ref: string;
-}>;
+  signature: string;
+};
 
-export type SimEventType =
-  | "agent.move"
-  | "agent.goal.update"
-  | "window.focus"
-  | "window.layout.change"
-  | "substrate.shift"
-  | "substrate.anomaly"
-  | "substrate.quantum.shift"
-  | "substrate.quantum.branch"
-  | "substrate.quantum.collapse"
-  | "tec.task.created"
-  | "tec.task.completed";
-
-export type SimEvent = Readonly<{
+export type PlanetaryNodeSnapshot = {
   id: string;
-  type: SimEventType;
-  payload: Readonly<Record<string, unknown>>;
-  at: number;
-  identityId?: string;
-}>;
+  identity: PlanetaryIdentity;
+  quantum: PlanetaryQuantumState;
+  substrate: PlanetarySubstrate;
+  canon: PlanetaryCanon;
+};
 
-export type SimAgentState = Readonly<{
-  id: string;
-  identityId: string;
-  traits: Readonly<Record<string, unknown>>;
-  mood: string;
-  goals: Readonly<Record<string, unknown>>;
-  location: Readonly<{ x: number; y: number }>;
-  tickVersion: number;
-}>;
+export type PlanetaryQuantumState = {
+  overlay: QuantumOverlay | null;
+};
 
-export type SimWindowState = Readonly<{
-  id: string;
-  ownerIdentityId: string;
-  focus: boolean;
-  layout: Readonly<Record<string, unknown>>;
-  openSince: number;
-  history: ReadonlyArray<SimEvent>;
-}>;
-
-export type SimSubstrateState = Readonly<{
-  id: string;
-  resources: Readonly<Record<string, number>>;
-  topology: Readonly<Record<string, unknown>>;
+export type PlanetarySubstrate = {
   stability: number;
-  anomalies: ReadonlyArray<SimEvent>;
-}>;
+};
 
-export type PortalKernelState = Readonly<{
-  agents: Readonly<Record<string, SimAgentState>>;
-  windows: Readonly<Record<string, SimWindowState>>;
-  substrate: SimSubstrateState;
-  events: ReadonlyArray<SimEvent>;
-  tick: number;
-}>;
+export type PlanetaryCanon = {
+  truths: InstituteTruth[];
+  signature: string;
+};
 
-export type SimDiffEntry = Readonly<{
-  eventId: string;
-  kind: "agent" | "window" | "substrate" | "tec";
-  entityId: string;
-  before: unknown;
-  after: unknown;
-}>;
+export type PlanetaryGovernanceContext = {
+  mode: UmbrellaMode;
+  reason?: string;
+};
 
-export type SimTickDiff = Readonly<{
-  tick: number;
-  appliedEventIds: ReadonlyArray<string>;
-  changes: ReadonlyArray<SimDiffEntry>;
-}>;
+export type PlanetaryState = {
+  nodes: PlanetaryNodeSnapshot[];
+};
 
-export type SimTecTaskState = Readonly<{
+export type PlanetarySynchronization = {
+  branches: QuantumBranch[];
+  explicitSync: boolean;
+};
+
+export type PlanetaryAnomaly = {
+  kind: string;
+  details?: string;
+};
+
+// -------------------------------------------------------------
+// Institute Types
+// -------------------------------------------------------------
+
+export type EpistemicEventAction =
+  | "observe"
+  | "infer"
+  | "update"
+  | "reject";
+
+export type EpistemicEvent = {
   id: string;
-  identityId: string;
-  status: "created" | "completed";
-  tickVersion: number;
-}>;
+  action: EpistemicEventAction;
+  payload: unknown;
+  time: number;
+};
 
-export type InstituteTruth = Readonly<{
+export type EpistemicTimeline = EpistemicEvent[];
+
+export type InstituteInferenceFact = {
   id: string;
-  description: string;
-  sourceFacts: ReadonlyArray<string>;
-  stability: number;
-  curvature: number;
+  kind: InferenceFactKind;
+  confidence: number;
+  payload: unknown;
+};
+
+export type InstituteInferenceHypothesis = {
+  id: string;
+  facts: InstituteInferenceFact[];
+  confidence: number;
+};
+
+export type InstituteQuantumBranch = QuantumBranch;
+
+export type InstituteSimulationDelta = SimTickDiff;
+
+export type InstituteTruth = {
+  id: string;
   createdAt: number;
   updatedAt: number;
-}>;
-
-export type InstituteCanon = Readonly<{
-  truths: Readonly<Record<string, InstituteTruth>>;
-  version: number;
-  updatedAt: number;
-}>;
-
-export type EpistemicEventAction = "added" | "updated" | "deprecated";
-
-export type EpistemicEvent = Readonly<{
-  id: string;
-  truthId: string;
-  action: EpistemicEventAction;
-  at: number;
-  meta: Readonly<Record<string, unknown>>;
-}>;
-
-export type EpistemicTimeline = Readonly<{
-  identityId: string;
-  events: ReadonlyArray<EpistemicEvent>;
-}>;
-
-export type InstituteState = Readonly<{
-  canon: InstituteCanon;
-  timelines: Readonly<Record<string, EpistemicTimeline>>;
-}>;
-
-export type InstituteInferenceFact = Readonly<{
-  id: string;
-  description: string;
-  confidence: number;
-}>;
-
-export type InstituteInferenceHypothesis = Readonly<{
-  id: string;
-  factIds: ReadonlyArray<string>;
-  confidence: number;
-  curvatureGuidance?: number;
-  collapsePolicySuggestion?: PlanetaryQuantumState["collapsePolicy"];
-}>;
-
-export type InstituteQuantumBranch = Readonly<{
-  factId: string;
-  probability: number;
-  curvature: number;
-  signature?: string;
-}>;
-
-export type InstituteSimulationDelta = Readonly<{
-  factId: string;
-  tick: number;
-}>;
-
-export type InstituteTruthFormation = Readonly<{
-  id: string;
-  description: string;
-  identityId: string;
-  facts: ReadonlyArray<InstituteInferenceFact>;
-  hypotheses: ReadonlyArray<InstituteInferenceHypothesis>;
-  quantumBranches: ReadonlyArray<InstituteQuantumBranch>;
-  simulationDeltas: ReadonlyArray<InstituteSimulationDelta>;
-  at: number;
-}>;
-
-export type PlanetaryIdentity = Readonly<{
-  id: string;
-  originNode: string;
-  timeline: EpistemicTimeline;
-  curvature: number;
-  signature: string;
-}>;
-
-export type PlanetaryAnomaly = Readonly<{
-  id: string;
-  node: string;
-  magnitude: number;
-  signature: string;
-  at: number;
-}>;
-
-export type PlanetarySubstrate = Readonly<{
-  id: string;
-  nodes: ReadonlyArray<string>;
-  topology: Readonly<Record<string, unknown>>;
+  payload: unknown;
   stability: number;
-  anomalies: ReadonlyArray<PlanetaryAnomaly>;
-}>;
+};
 
-export type PlanetaryGovernanceContext = Readonly<{
-  mode: UmbrellaMode;
-  nodePolicies: Readonly<Record<string, unknown>>;
-  globalTruthRules: Readonly<Record<string, unknown>>;
-  collapseRules: Readonly<Record<string, unknown>>;
-}>;
+export type InstituteTruthFormation = {
+  truth: InstituteTruth;
+  advisory?: string;
+};
 
-export type QuantumBranch = Readonly<{
+export type InstituteCanon = {
+  truths: InstituteTruth[];
+  signature: string;
+};
+
+export type InstituteState = {
+  canon: InstituteCanon;
+  timeline: EpistemicTimeline;
+};
+
+// -------------------------------------------------------------
+// Inference Types
+// -------------------------------------------------------------
+
+export type InferenceFactKind =
+  | "behavior"
+  | "identity"
+  | "window"
+  | "tec"
+  | "substrate"
+  | "governance";
+
+export type InferenceFact = {
+  id: string;
+  kind: InferenceFactKind;
+  payload: unknown;
+};
+
+export type InferenceHypothesis = {
+  id: string;
+  facts: InferenceFact[];
+  confidence: number;
+};
+
+export type InferenceRecommendationTarget =
+  | "substrate"
+  | "identity"
+  | "window"
+  | "tec";
+
+export type InferenceRecommendation = {
   id: string;
   node: string;
   probability: number;

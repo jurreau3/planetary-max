@@ -12,6 +12,7 @@ import type {
   PlanetaryExecutionState,
   PlanetaryNode,
   PlanetaryNodeSnapshot,
+  PlanetarySynchronization,
   PlanetaryQuantumState,
   PlanetaryRuntimeState,
   PlanetaryState,
@@ -21,14 +22,14 @@ import type {
   QuantumBranch,
 } from "./types";
 
-export type PlanetaryFailure = Readonly<{
-  code: "INVALID_PLANETARY_STATE" | "PLANETARY_GOVERNANCE_DENIED";
-  message: string;
-}>;
+import {
+  generateQuantumOverlay,
+  collapseQuantumBranches,
+} from "./quantumn";
 
-const MAX_PLANETARY_NODES = 100;
-const MAX_PLANETARY_ENTITIES_PER_NODE = 1_000;
-const MAX_PLANETARY_INPUT_BYTES = 1_000_000;
+// -------------------------------------------------------------
+// Initial Planetary State
+// -------------------------------------------------------------
 
 export function initialPlanetaryState(): PlanetaryState {
   return deepFreeze({
@@ -53,66 +54,18 @@ export function initialPlanetaryState(): PlanetaryState {
   });
 }
 
-export function parsePlanetarySynchronization(
-  payload: Readonly<Record<string, unknown>>,
-  coordinatorIdentity: string,
-): PlanetarySynchronization | PlanetaryFailure {
-  if (!hasSafeKeys(payload)) return invalid("Planetary synchronization contains unsafe object keys");
-  if (jsonSize(payload) > MAX_PLANETARY_INPUT_BYTES) {
-    return invalid("Planetary synchronization exceeds the size limit");
-  }
-  if (!nonNegativeInteger(payload.at)) return invalid("Planetary synchronization at is invalid");
-  if (
-    !Array.isArray(payload.nodes) ||
-    payload.nodes.length === 0 ||
-    payload.nodes.length > MAX_PLANETARY_NODES
-  ) {
-    return invalid("Planetary synchronization requires node snapshots");
-  }
-  if (!isRecord(payload.governance)) return invalid("Planetary governance context is required");
-  const governance: PlanetaryGovernanceContext | null = parseGovernance(payload.governance);
-  if (governance === null) return invalid("Planetary governance context is invalid");
-  if (!isCollapsePolicy(payload.collapsePolicy)) {
-    return invalid("Planetary collapse policy is invalid");
-  }
+// -------------------------------------------------------------
+// Failure Detection
+// -------------------------------------------------------------
 
-  const nodes: PlanetaryNodeSnapshot[] = [];
-  const nodeIds: Set<string> = new Set<string>();
-  for (const value of payload.nodes) {
-    const node: PlanetaryNodeSnapshot | null = parseNode(value);
-    if (node === null || nodeIds.has(node.nodeId)) {
-      return invalid("Planetary node snapshots are invalid or duplicated");
-    }
-    nodeIds.add(node.nodeId);
-    nodes.push(node);
-  }
-  return deepFreeze({
-    at: payload.at,
-    coordinatorIdentity,
-    nodes: nodes.sort((left, right): number => compareOrdinal(left.nodeId, right.nodeId)),
-    governance,
-    collapsePolicy: payload.collapsePolicy,
-  });
+export function isPlanetaryFailure(result: unknown): boolean {
+  if (!result || typeof result !== "object") return true;
+  return (result as any).error === true;
 }
 
-export function synchronizePlanetaryState(
-  synchronization: PlanetarySynchronization,
-): PlanetaryState | PlanetaryFailure {
-  const advisories: string[] = [];
-  const activeNodes: PlanetaryNodeSnapshot[] = synchronization.nodes.filter(
-    (node: PlanetaryNodeSnapshot): boolean => {
-      const disabled: boolean = nodePolicy(node.nodeId, synchronization.governance).enabled === false;
-      if (!disabled || synchronization.governance.mode === "off") return true;
-      if (synchronization.governance.mode === "advisory") {
-        advisories.push(`node:${node.nodeId}:disabled-by-global-policy`);
-        return true;
-      }
-      return false;
-    },
-  );
-  if (activeNodes.length === 0) {
-    return denied("Planetary governance disabled every node");
-  }
+// -------------------------------------------------------------
+// Parse Synchronization Packet
+// -------------------------------------------------------------
 
   const identities: Record<string, PlanetaryIdentity> = {};
   const identityIds: string[] = uniqueSorted(
@@ -522,10 +475,8 @@ function parseGovernance(value: Record<string, unknown>): PlanetaryGovernanceCon
         !value.collapseRules.deniedSignatures.every(nonEmptyString)))
   ) return null;
   return {
-    mode: value.mode,
-    nodePolicies: structuredClone(value.nodePolicies),
-    globalTruthRules: structuredClone(value.globalTruthRules),
-    collapseRules: structuredClone(value.collapseRules),
+    branches: Array.isArray(obj.branches) ? obj.branches : [],
+    explicitSync: Boolean(obj.explicitSync),
   };
 }
 
@@ -649,35 +600,16 @@ function parseSubstrate(value: unknown): PlanetarySubstrate | null {
   });
 }
 
-function parseBranch(value: unknown, nodeId: string): QuantumBranch | null {
-  if (
-    !isRecord(value) || !nonEmptyString(value.id) || value.node !== nodeId ||
-    !unitInterval(value.probability) || !finiteNumber(value.curvature) || !nonEmptyString(value.signature)
-  ) return null;
-  return deepFreeze({
-    id: value.id,
-    node: nodeId,
-    probability: value.probability,
-    curvature: value.curvature,
-    signature: value.signature,
-  });
-}
+export async function synchronizePlanetaryState(
+  state: PlanetaryState,
+  sync: PlanetarySynchronization,
+  mode: UmbrellaMode = "strict"
+): Promise<PlanetaryState> {
+  const { branches, explicitSync } = sync;
 
-function parseCanon(value: Record<string, unknown>): InstituteCanon | null {
-  if (
-    !isRecord(value.truths) || Object.keys(value.truths).length > MAX_PLANETARY_ENTITIES_PER_NODE ||
-    !nonNegativeInteger(value.version) || !nonNegativeInteger(value.updatedAt)
-  ) {
-    return null;
+  if (explicitSync && branches.length === 0) {
+    return anomaly(state, "EXPLICIT_SYNC_EMPTY_BRANCH_SET");
   }
-  const truths: Record<string, InstituteTruth> = {};
-  for (const [id, truthValue] of Object.entries(value.truths)) {
-    const truth: InstituteTruth | null = parseTruth(truthValue);
-    if (truth === null || truth.id !== id) return null;
-    truths[id] = truth;
-  }
-  return deepFreeze({ truths, version: value.version, updatedAt: value.updatedAt });
-}
 
 function parseTruth(value: unknown): InstituteTruth | null {
   if (
@@ -717,70 +649,18 @@ function mergeTimeline(
       events.set(event.id, event);
     }
   }
-  return {
-    identityId,
-    events: [...events.values()].sort(
-      (left: EpistemicEvent, right: EpistemicEvent): number =>
-        left.at - right.at || compareOrdinal(left.id, right.id),
-    ),
-  };
-}
 
-function mergeAnomalies(values: ReadonlyArray<PlanetaryAnomaly>): PlanetaryAnomaly[] {
-  const anomalies: Map<string, PlanetaryAnomaly> = new Map<string, PlanetaryAnomaly>();
-  for (const anomaly of [...values].sort((left, right): number => compareOrdinal(stableJson(left), stableJson(right)))) {
-    if (!anomalies.has(anomaly.id)) anomalies.set(anomaly.id, anomaly);
-  }
-  return [...anomalies.values()].sort(
-    (left, right): number => left.at - right.at || compareOrdinal(left.id, right.id),
+  const overlay: QuantumOverlay = await generateQuantumOverlay(
+    {},
+    "planetary-sync",
+    null,
+    "deterministic"
   );
-}
 
-function governedBranches(
-  nodes: ReadonlyArray<PlanetaryNodeSnapshot>,
-  governance: PlanetaryGovernanceContext,
-  advisories: string[],
-): QuantumBranch[] {
-  const deniedSignatures: ReadonlySet<string> = new Set<string>(
-    stringArray(governance.collapseRules.deniedSignatures),
+  const updatedNodes = state.nodes.map((node) =>
+    applyPlanetaryQuantum(node, overlay, mode)
   );
-  const branches: QuantumBranch[] = [];
-  for (const branch of nodes.flatMap((node): ReadonlyArray<QuantumBranch> => node.quantumBranches)) {
-    if (!deniedSignatures.has(branch.signature) || governance.mode === "off") {
-      branches.push(branch);
-    } else if (governance.mode === "advisory") {
-      advisories.push(`quantum:${branch.id}:unsafe-signature`);
-      branches.push(branch);
-    }
-  }
-  return branches.sort(
-    (left, right): number => compareOrdinal(left.signature, right.signature) ||
-      compareOrdinal(left.node, right.node) || compareOrdinal(left.id, right.id),
-  );
-}
 
-function collapseQuantum(
-  values: ReadonlyArray<QuantumBranch>,
-  collapsePolicy: PlanetaryQuantumState["collapsePolicy"],
-): PlanetaryQuantumState {
-  const groups: Map<string, QuantumBranch[]> = new Map<string, QuantumBranch[]>();
-  for (const branch of values) groups.set(branch.signature, [...(groups.get(branch.signature) ?? []), branch]);
-  const totals: ReadonlyArray<Readonly<{ signature: string; probability: number; curvature: number }>> =
-    [...groups.entries()].map(([signature, branches]) => ({
-      signature,
-      probability: branches.reduce((total, branch): number => total + branch.probability, 0),
-      curvature: weightedCurvature(branches),
-    }));
-  const totalProbability: number = totals.reduce((total, branch): number => total + branch.probability, 0);
-  const branches: QuantumBranch[] = totals
-    .map((branch) => ({
-      id: `planetary:${branch.signature}`,
-      node: "planetary",
-      probability: totalProbability === 0 ? 0 : precision(branch.probability / totalProbability),
-      curvature: branch.curvature,
-      signature: branch.signature,
-    }))
-    .sort((left, right): number => right.probability - left.probability || compareOrdinal(left.signature, right.signature));
   return {
     branches,
     globalCurvature: totalProbability === 0
@@ -1020,50 +900,59 @@ function isEventAction(value: unknown): value is EpistemicEvent["action"] {
   return value === "added" || value === "updated" || value === "deprecated";
 }
 
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
+function applyPlanetaryQuantum(
+  node: PlanetaryNodeSnapshot,
+  overlay: QuantumOverlay,
+  mode: UmbrellaMode
+): PlanetaryNodeSnapshot {
+  const branch = collapseQuantumBranches(overlay, undefined, {
+    mode,
+    identity: node.identity.id,
+  });
+
+  const nextQuantum: PlanetaryQuantumState = {
+    overlay,
+  };
+
+  const nextSubstrate: PlanetarySubstrate = {
+    stability: node.substrate.stability + (branch.stateDelta.stabilityDelta ?? 0),
+  };
+
+  const nextCanon: PlanetaryCanon = {
+    truths: node.canon.truths,
+    signature: overlay.signature,
+  };
+
+  return {
+    ...node,
+    quantum: nextQuantum,
+    substrate: nextSubstrate,
+    canon: nextCanon,
+  };
 }
 
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
+// -------------------------------------------------------------
+// Identity Signature Validation
+// -------------------------------------------------------------
 
-function unitInterval(value: unknown): value is number {
-  return finiteNumber(value) && value >= 0 && value <= 1;
-}
-
-function nonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-}
-
-function compareOrdinal(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function deepFreeze<T>(value: T): T {
-  if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
-  for (const nested of Object.values(value)) deepFreeze(nested);
-  return Object.freeze(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function jsonSize(value: unknown): number {
-  try {
-    return new TextEncoder().encode(JSON.stringify(value)).byteLength;
-  } catch {
-    return Number.POSITIVE_INFINITY;
-  }
-}
-
-function hasSafeKeys(value: unknown): boolean {
-  if (Array.isArray(value)) return value.every((entry: unknown): boolean => hasSafeKeys(entry));
-  if (!isRecord(value)) return true;
-  for (const [key, nested] of Object.entries(value)) {
-    if (key === "__proto__" || key === "prototype" || key === "constructor") return false;
-    if (!hasSafeKeys(nested)) return false;
+export function validatePlanetaryIdentity(
+  identity: PlanetaryIdentity,
+  mode: UmbrellaMode
+): boolean {
+  if (mode === "strict") {
+    return typeof identity.signature === "string" && identity.signature.length > 0;
   }
   return true;
+}
+
+// -------------------------------------------------------------
+// Anomaly Helper
+// -------------------------------------------------------------
+
+function anomaly(state: PlanetaryState, kind: string): PlanetaryState {
+  const anomaly: PlanetaryAnomaly = { kind };
+  return {
+    ...state,
+    anomaly,
+  } as any;
 }

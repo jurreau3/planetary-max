@@ -1,15 +1,21 @@
-import type { Context, Hono } from "hono";
-import type {
-  Bindings,
-  EpistemicTimeline,
-  InstituteState,
-  PlanetaryState,
-  PortalKernelState,
+//
+// Unified Introspection Layer
+// MAX‑Institute + Portal‑OS Wing
+// Planetary‑MAX Quantum Substrate
+//
+
+import {
   QuantumOverlay,
-  SimEvent,
-  SimTecTaskState,
-  SimTickDiff,
+  PlanetaryState,
+  PlanetaryNodeSnapshot,
+  InstituteState,
+  KernelResult,
+  SimSubstrateState,
   SimWindowState,
+  SimAgentState,
+  SimTecTaskState,
+  EpistemicTimeline,
+  InstituteCanon,
 } from "./types";
 import { runInference } from "./inference";
 
@@ -117,85 +123,40 @@ export function attachIntrospectionRoutes(
   app.get("/api/introspection/planetary/state", introspectionHandler("planetary.state"));
 }
 
-function introspectionHandler(
-  kind: IntrospectionKind,
-): (context: Context<{ Bindings: Bindings }>) => Promise<Response> {
-  return (context: Context<{ Bindings: Bindings }>): Promise<Response> =>
-    handleIntrospection(context, kind);
+// -------------------------------------------------------------
+// Quantum Introspection
+// -------------------------------------------------------------
+
+export function introspectQuantumState(
+  global: Record<string, unknown>,
+  ctx: AuthContext
+): QuantumOverlay | null {
+  requireAuth(ctx);
+  return (global[QUANTUM_STATE_KEY] as QuantumOverlay) ?? null;
 }
 
-async function handleIntrospection(
-  context: Context<{ Bindings: Bindings }>,
-  kind: IntrospectionKind,
-): Promise<Response> {
-  if (PLANETARY_INTROSPECTION_KINDS.has(kind)) {
-    const state: PlanetaryState | Response = await readPlanetaryState(context.env);
-    if (state instanceof Response) return state;
-    return context.json({
-      ok: true,
-      introspection: kind,
-      worker: "planetary-max",
-      result: planetaryIntrospectionResult(kind, state),
-    });
-  }
-  if (INSTITUTE_INTROSPECTION_KINDS.has(kind)) {
-    const state: InstituteState | Response = await readInstituteState(context.env);
-    if (state instanceof Response) return state;
-    if (kind === "institute.signature") {
-      const planetary: PlanetaryState | Response = await readPlanetaryState(context.env);
-      if (planetary instanceof Response) return planetary;
-      return context.json({
-        ok: true,
-        introspection: kind,
-        worker: "planetary-max",
-        result: {
-          truths: instituteSignatureOverlays(state),
-          planetary: {
-            globalSignature: planetary.quantum.globalSignature,
-            branches: planetary.quantum.branches,
-          },
-        },
-      });
-    }
-    return context.json({
-      ok: true,
-      introspection: kind,
-      worker: "planetary-max",
-      result: instituteIntrospectionResult(kind, state, context.req.query("identityId")),
-    });
-  }
-  if (!SIMULATION_INTROSPECTION_KINDS.has(kind)) {
-    return context.json({ ok: true, introspection: kind, worker: "planetary-max" });
-  }
-
-  const state: SimulationIntrospectionState | Response = await readSimulationState(context.env);
-  if (state instanceof Response) return state;
-  return context.json({
-    ok: true,
-    introspection: kind,
-    worker: "planetary-max",
-    result: introspectionResult(kind, state),
-  });
+export function introspectQuantumBranches(
+  global: Record<string, unknown>,
+  ctx: AuthContext
+) {
+  const overlay = introspectQuantumState(global, ctx);
+  return overlay ? overlay.branches : [];
 }
 
-function instituteIntrospectionResult(
-  kind: IntrospectionKind,
-  state: InstituteState,
-  identityId: string | undefined,
-): unknown {
-  if (kind === "institute.canon") return state.canon;
-  if (kind === "institute.truths") {
-    return Object.values(state.canon.truths).sort((left, right): number => compareOrdinal(left.id, right.id));
-  }
-  if (kind === "institute.timeline") {
-    return identityId === undefined ? null : state.timelines[identityId] ?? null;
-  }
-  if (kind === "institute.stability") {
-    return Object.fromEntries(Object.values(state.canon.truths)
-      .sort((left, right): number => compareOrdinal(left.id, right.id))
-      .map((truth): readonly [string, number] => [truth.id, truth.stability]));
-  }
-  return Object.values(state.timelines).sort(compareTimelines);
+export function introspectQuantumCurvature(
+  global: Record<string, unknown>,
+  ctx: AuthContext
+) {
+  const overlay = introspectQuantumState(global, ctx);
+  return overlay ? overlay.curvature : null;
+}
+
+export function introspectQuantumSignature(
+  global: Record<string, unknown>,
+  ctx: AuthContext
+) {
+  const overlay = introspectQuantumState(global, ctx);
+  return overlay ? overlay.signature : null;
 }
 
 function planetaryIntrospectionResult(kind: IntrospectionKind, state: PlanetaryState): unknown {
@@ -209,203 +170,158 @@ function planetaryIntrospectionResult(kind: IntrospectionKind, state: PlanetaryS
   return state;
 }
 
-function instituteSignatureOverlays(
-  state: InstituteState,
-): Readonly<Record<string, ReadonlyArray<string>>> {
-  const signatures: Record<string, string[]> = {};
-  const events: EpistemicTimeline["events"] = Object.values(state.timelines)
-    .flatMap((timeline: EpistemicTimeline): EpistemicTimeline["events"] => timeline.events)
-    .sort((left, right): number => left.at - right.at || compareOrdinal(left.id, right.id));
-  for (const event of events) {
-    const overlays: unknown = event.meta.signatureOverlays;
-    if (!Array.isArray(overlays)) continue;
-    signatures[event.truthId] = [...new Set<string>(overlays.filter(
-      (value: unknown): value is string => typeof value === "string" && value.length > 0,
-    ))].sort(compareOrdinal);
-  }
-  return signatures;
+export function introspectSimSubstrate(
+  sim: Record<string, unknown>,
+  ctx: AuthContext
+): SimSubstrateState | null {
+  requireAuth(ctx);
+  return (sim.substrate as SimSubstrateState) ?? null;
 }
 
-async function readInstituteState(env: Bindings): Promise<InstituteState | Response> {
-  try {
-    const id: DurableObjectId = env.PORTAL_KERNEL.idFromName(KERNEL_OBJECT_NAME);
-    const response: Response = await env.PORTAL_KERNEL.get(id).fetch(
-      new Request(INSTITUTE_STATE_URL, { method: "GET" }),
-    );
-    const value: unknown = await response.json();
-    if (!response.ok || !isRecord(value) || value.ok !== true || !isInstituteState(value.result)) {
-      return introspectionFailure("PortalKernel returned an invalid Institute snapshot");
-    }
-    return value.result;
-  } catch {
-    return introspectionFailure("PortalKernel Institute snapshot is unavailable");
-  }
+export function introspectSimWindows(
+  sim: Record<string, unknown>,
+  ctx: AuthContext
+): Record<string, SimWindowState> {
+  requireAuth(ctx);
+  return (sim.windows as Record<string, SimWindowState>) ?? {};
 }
 
-async function readPlanetaryState(env: Bindings): Promise<PlanetaryState | Response> {
-  try {
-    const id: DurableObjectId = env.PORTAL_KERNEL.idFromName(KERNEL_OBJECT_NAME);
-    const response: Response = await env.PORTAL_KERNEL.get(id).fetch(
-      new Request(PLANETARY_STATE_URL, { method: "GET" }),
-    );
-    const value: unknown = await response.json();
-    if (!response.ok || !isRecord(value) || value.ok !== true || !isPlanetaryState(value.result)) {
-      return introspectionFailure("PortalKernel returned an invalid planetary snapshot");
-    }
-    return value.result;
-  } catch {
-    return introspectionFailure("PortalKernel planetary snapshot is unavailable");
-  }
+export function introspectSimIdentity(
+  sim: Record<string, unknown>,
+  ctx: AuthContext
+): Record<string, SimAgentState> {
+  requireAuth(ctx);
+  return (sim.identity as Record<string, SimAgentState>) ?? {};
 }
 
-async function readSimulationState(
-  env: Bindings,
-): Promise<SimulationIntrospectionState | Response> {
-  try {
-    const id: DurableObjectId = env.PORTAL_KERNEL.idFromName(KERNEL_OBJECT_NAME);
-    const response: Response = await env.PORTAL_KERNEL.get(id).fetch(
-      new Request(SIMULATION_STATE_URL, { method: "GET" }),
-    );
-    const value: unknown = await response.json();
-    if (!response.ok || !isRecord(value) || value.ok !== true || !isSimulationState(value.result)) {
-      return Response.json(
-        {
-          ok: false,
-          error: {
-            code: "INTROSPECTION_FAILED",
-            message: "PortalKernel returned an invalid simulation snapshot",
-          },
-        },
-        { status: 503 },
-      );
-    }
-    return value.result;
-  } catch {
-    return Response.json(
-      {
-        ok: false,
-        error: {
-          code: "INTROSPECTION_FAILED",
-          message: "PortalKernel simulation snapshot is unavailable",
-        },
-      },
-      { status: 503 },
-    );
-  }
+export function introspectSimTecPipeline(
+  sim: Record<string, unknown>,
+  ctx: AuthContext
+): Record<string, SimTecTaskState> {
+  requireAuth(ctx);
+  return (sim.tec as Record<string, SimTecTaskState>) ?? {};
 }
 
-function introspectionResult(
-  kind: IntrospectionKind,
-  state: SimulationIntrospectionState,
-): unknown {
-  const windows: ReadonlyArray<SimWindowState> = Object.values(state.windows).sort(
-    (left: SimWindowState, right: SimWindowState): number => compareOrdinal(left.id, right.id),
-  );
-  if (kind === "sim.behavior") {
-    return {
-      activeAgents: Object.keys(state.agents).length,
-      hotspots: simulationHotspots(state),
-      anomalies: state.substrate.anomalies.length,
-      tick: state.tick,
-    };
-  }
-  if (kind === "identity.timeline") {
-    return state.eventLog
-      .filter((event: SimEvent): boolean => event.identityId !== undefined)
-      .map((event: SimEvent) => ({
-        eventId: event.id,
-        identityId: event.identityId,
-        type: event.type,
-        at: event.at,
-      }));
-  }
-  if (kind === "windows.focus") {
-    return windows
-      .filter((window: SimWindowState): boolean => window.focus)
-      .map((window: SimWindowState): string => window.id);
-  }
-  if (kind === "windows.state") return windows;
-  if (kind === "windows.timeline") {
-    return windows.flatMap((window: SimWindowState): ReadonlyArray<SimEvent> => window.history)
-      .sort(compareEvents);
-  }
-  if (kind === "tec.pipeline") {
-    return Object.values(state.tecTasks).sort(
-      (left: SimTecTaskState, right: SimTecTaskState): number => compareOrdinal(left.id, right.id),
-    );
-  }
-  if (kind === "substrate.state") return state.substrate;
-  if (kind === "messages") return state.eventLog;
-  if (kind === "logs") return state.diffLog;
-  if (kind === "inference") {
-    return runInference({ simulation: state, quantum: state.quantum });
-  }
-  if (kind === "quantum.state") return state.quantum.state;
-  if (kind === "quantum.branches") return state.quantum.state.branches;
-  if (kind === "quantum.curvature") return state.quantum.curvature;
-  if (kind === "quantum.signature") return state.quantum.signatures;
-  return {};
+// -------------------------------------------------------------
+// Kernel Introspection
+// -------------------------------------------------------------
+
+export function introspectKernelHeatmap(
+  kernel: KernelResult,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return kernel.body ?? null;
 }
 
-function simulationHotspots(
-  state: SimulationIntrospectionState,
-): ReadonlyArray<Readonly<{ x: number; y: number; agents: number }>> {
-  const counts: Record<string, { x: number; y: number; agents: number }> = {};
-  for (const agent of Object.values(state.agents)) {
-    const key: string = `${agent.location.x}:${agent.location.y}`;
-    const current: { x: number; y: number; agents: number } | undefined = counts[key];
-    counts[key] = current === undefined
-      ? { x: agent.location.x, y: agent.location.y, agents: 1 }
-      : { ...current, agents: current.agents + 1 };
-  }
-  return Object.values(counts)
-    .filter((hotspot): boolean => hotspot.agents > 1)
-    .sort((left, right): number => left.x - right.x || left.y - right.y);
+export function introspectKernelMessages(
+  kernel: KernelResult,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return kernel.body?.messages ?? [];
 }
 
-function compareEvents(left: SimEvent, right: SimEvent): number {
-  return left.at - right.at || compareOrdinal(left.id, right.id);
+export function introspectKernelLogs(
+  kernel: KernelResult,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return kernel.body?.logs ?? [];
 }
 
-function compareOrdinal(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
+export function introspectInferenceArtifacts(
+  kernel: KernelResult,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return kernel.body?.inference ?? null;
 }
 
-function compareTimelines(left: EpistemicTimeline, right: EpistemicTimeline): number {
-  return compareOrdinal(left.identityId, right.identityId);
+// -------------------------------------------------------------
+// Institute Introspection
+// -------------------------------------------------------------
+
+export function introspectInstituteCanon(
+  institute: InstituteState,
+  ctx: AuthContext
+): InstituteCanon {
+  requireAuth(ctx);
+  return institute.canon;
 }
 
-function introspectionFailure(message: string): Response {
-  return Response.json(
-    { ok: false, error: { code: "INTROSPECTION_FAILED", message } },
-    { status: 503 },
-  );
+export function introspectInstituteTruths(
+  institute: InstituteState,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return institute.canon.truths;
 }
 
-function isSimulationState(value: unknown): value is SimulationIntrospectionState {
-  return (
-    isRecord(value) &&
-    isRecord(value.agents) &&
-    isRecord(value.windows) &&
-    isRecord(value.substrate) &&
-    Array.isArray(value.events) &&
-    typeof value.tick === "number" &&
-    Array.isArray(value.eventLog) &&
-    Array.isArray(value.diffLog) &&
-    isRecord(value.tecTasks) &&
-    isRecord(value.quantum)
-  );
+export function introspectInstituteTimeline(
+  institute: InstituteState,
+  ctx: AuthContext
+): EpistemicTimeline {
+  requireAuth(ctx);
+  return institute.timeline;
 }
 
-function isInstituteState(value: unknown): value is InstituteState {
-  return (
-    isRecord(value) &&
-    isRecord(value.canon) &&
-    isRecord(value.canon.truths) &&
-    typeof value.canon.version === "number" &&
-    typeof value.canon.updatedAt === "number" &&
-    isRecord(value.timelines)
-  );
+export function introspectInstituteStability(
+  institute: InstituteState,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return institute.canon.truths.map((t) => ({
+    id: t.id,
+    stability: t.stability,
+  }));
+}
+
+export function introspectInstituteSignature(
+  institute: InstituteState,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return institute.canon.signature;
+}
+
+export function introspectInstituteTimelines(
+  institute: InstituteState,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return {
+    timeline: institute.timeline,
+    truths: institute.canon.truths,
+  };
+}
+
+// -------------------------------------------------------------
+// Planetary Introspection
+// -------------------------------------------------------------
+
+export function introspectPlanetaryIdentity(
+  planetary: PlanetaryState,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return planetary.nodes.map((n) => n.identity);
+}
+
+export function introspectPlanetarySubstrate(
+  planetary: PlanetaryState,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return planetary.nodes.map((n) => n.substrate);
+}
+
+export function introspectPlanetaryQuantum(
+  planetary: PlanetaryState,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return planetary.nodes.map((n) => n.quantum);
 }
 
 function isPlanetaryState(value: unknown): value is PlanetaryState {
@@ -416,6 +332,13 @@ function isPlanetaryState(value: unknown): value is PlanetaryState {
     Array.isArray(value.advisories);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export function introspectPlanetaryGovernance(
+  planetary: PlanetaryState,
+  ctx: AuthContext
+) {
+  requireAuth(ctx);
+  return planetary.nodes.map((n) => ({
+    identity: n.identity.id,
+    signature: n.identity.signature,
+  }));
 }
