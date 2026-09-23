@@ -9,6 +9,10 @@ import {
   type Bindings,
   type KernelEnvelope,
   type KernelLane,
+  type PortalKernelState,
+  type SimEvent,
+  type SimEventType,
+  type SimTickDiff,
 } from '../src/index';
 
 const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJpc3MiOiJwb3J0YWwtbG9naW4iLCJhdWQiOiJwbGFuZXRhcnktbWF4IiwiZXhwIjo0MTAyNDQ0ODAwfQ.MWNP0Fu3Ky8BUTACh5fSViDpRZL2SkN5moFjzAvQAwg';
@@ -30,9 +34,9 @@ class MemoryStorage {
   }
 }
 
-function makeKernel(mode = 'strict'): PortalKernel {
+function makeKernel(mode = 'strict', storage: MemoryStorage = new MemoryStorage()): PortalKernel {
   return new PortalKernel(
-    { storage: new MemoryStorage() } as unknown as DurableObjectState,
+    { storage } as unknown as DurableObjectState,
     { UMBRELLA_ENFORCEMENT: mode },
   );
 }
@@ -58,26 +62,8 @@ function makeBindings(options: {
         options.maxOsFetch ??
         (async () =>
           Response.json({
-            lanes: [
-              {
-                name: 'umbrella.os',
-                result: {
-                  results: [
-                    {
-                      result: {
-                        data: {
-                          osPermissions: {},
-                          osIdentity: {},
-                          osGovernanceFlags: {},
-                          osTruthInvariants: {},
-                        },
-                        meta: { source: 'MAX-OS-1', governance: 'strict' },
-                      },
-                    },
-                  ],
-                },
-              },
-            ],
+            ok: true,
+            result: { accepted: true },
             meta: { umbrella: 'os-update' },
           })),
     },
@@ -119,6 +105,35 @@ async function kernelRequest(kernel: PortalKernel, value: unknown, raw = false):
   );
 }
 
+async function simulationRequest(
+  kernel: PortalKernel,
+  path: '/kernel/sim/event' | '/kernel/sim/tick' | '/kernel/sim/state',
+  method: 'GET' | 'POST',
+  body?: unknown,
+): Promise<Response> {
+  return kernel.fetch(
+    new Request(`https://kernel.test${path}`, {
+      method,
+      ...(body === undefined
+        ? {}
+        : {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }),
+    }),
+  );
+}
+
+function simulationEvent(
+  id: string,
+  type: SimEventType,
+  payload: Record<string, unknown>,
+  at: number,
+  identityId?: string,
+): SimEvent {
+  return { id, type, payload, at, ...(identityId === undefined ? {} : { identityId }) };
+}
+
 describe('kernel result helpers', () => {
   it('resolves all supported umbrella modes', () => {
     expect(['strict', 'advisory', 'off'].map(resolveUmbrellaMode)).toEqual(['strict', 'advisory', 'off']);
@@ -130,7 +145,23 @@ describe('kernel result helpers', () => {
 
   it('injects configured governance without allowing a caller override', () => {
     const value = createEnvelope('sim.step', {}, TOKEN, { tenant: 'one', umbrellaMode: 'off' }, 'strict');
-    expect(value.governanceContext).toMatchObject({ tenant: 'one', umbrellaMode: 'strict' });
+    expect(value.governanceContext).toMatchObject({
+      tenant: 'one',
+      mode: 'strict',
+      umbrellaMode: 'strict',
+      decision: 'allowed',
+      rationale: 'Umbrella governance allows the operation',
+    });
+  });
+
+  it('creates a deeply immutable envelope without freezing caller input', () => {
+    const payload = { nested: { value: 1 } };
+    const value = createEnvelope('sim.step', payload, 'test-user', {}, 'strict');
+    expect(Object.isFrozen(value)).toBe(true);
+    expect(Object.isFrozen(value.payload.nested)).toBe(true);
+    expect(() => Object.assign(value.payload.nested as object, { value: 2 })).toThrow();
+    payload.nested.value = 3;
+    expect(value.payload.nested).toEqual({ value: 1 });
   });
 
   it('extracts normalized lane data', () => {
@@ -161,6 +192,35 @@ describe('Hono Worker routes', () => {
     expect(invalid.status).toBe(401);
   });
 
+  it('requires the exact Bearer authorization scheme', async () => {
+    const response = await app.request(
+      '/api/kernel/message',
+      {
+        method: 'POST',
+        headers: { Authorization: `bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'sim.step', payload: {} }),
+      },
+      makeBindings(),
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it('validates JWT issuer and audience claims', async () => {
+    const request = authorized('POST', { type: 'sim.step', payload: {} });
+    const wrongIssuer = await app.request(
+      '/api/kernel/message',
+      request,
+      { ...makeBindings(), IDENTITY_JWT_ISSUER: 'another-issuer' },
+    );
+    const wrongAudience = await app.request(
+      '/api/kernel/message',
+      request,
+      { ...makeBindings(), IDENTITY_JWT_AUDIENCE: 'another-audience' },
+    );
+    expect(wrongIssuer.status).toBe(401);
+    expect(wrongAudience.status).toBe(401);
+  });
+
   it('rejects malformed JSON', async () => {
     const response = await app.request(
       '/api/kernel/message',
@@ -187,7 +247,7 @@ describe('Hono Worker routes', () => {
     );
     expect(await response.json()).toMatchObject({
       ok: true,
-      data: { kernel: 'Portal-OS Kernel Engine', operation: 'sim.step', accepted: true },
+      result: { kernel: 'Portal-OS Kernel Engine', operation: 'sim.step', accepted: true },
       meta: { type: 'sim.step', identity: { propagated: true } },
     });
   });
@@ -203,34 +263,33 @@ describe('Hono Worker routes', () => {
 
   it('returns DO-backed universe state', async () => {
     const response = await app.request('/universe/state', authorized(), makeBindings());
-    expect(await response.json()).toMatchObject({ ok: true, data: { tick: 0, properties: {} } });
+    expect(await response.json()).toMatchObject({ ok: true, result: { tick: 0, properties: {} } });
   });
 
   it('ticks the universe with an empty body', async () => {
     const response = await app.request('/universe/tick', authorized('POST'), makeBindings());
-    expect(await response.json()).toMatchObject({ ok: true, data: { tick: 1 } });
+    expect(await response.json()).toMatchObject({ ok: true, result: { tick: 1 } });
   });
 
   it('applies deterministic universe changes', async () => {
     const bindings = makeBindings();
     const first = await app.request('/universe/tick', authorized('POST', { changes: { resources: 2 } }), bindings);
     const second = await app.request('/universe/tick', authorized('POST', { changes: { resources: 3 } }), bindings);
-    expect(await first.json()).toMatchObject({ data: { tick: 1, properties: { resources: 2 } } });
-    expect(await second.json()).toMatchObject({ data: { tick: 2, properties: { resources: 5 } } });
+    expect(await first.json()).toMatchObject({ result: { tick: 1, properties: { resources: 2 } } });
+    expect(await second.json()).toMatchObject({ result: { tick: 2, properties: { resources: 5 } } });
   });
 
   it('returns umbrella state', async () => {
     const response = await app.request('/universe/umbrella', authorized(), makeBindings());
     expect(await response.json()).toMatchObject({
-      data: { umbrellaMode: 'strict', osTruthInvariants: { structuralTruth: true } },
+      result: { umbrellaMode: 'strict', osTruthInvariants: { structuralTruth: true } },
     });
   });
 
   it('routes identity physics through an umbrella lane', async () => {
     const response = await app.request('/umbrella/identity/license', authorized('POST', {}), makeBindings());
     expect(await response.json()).toMatchObject({
-      lanes: [{ name: 'umbrella.identity-physics' }],
-      data: { osIdentity: { authenticated: true, physicsApplied: true } },
+      result: { osIdentity: { authenticated: true, physicsApplied: true } },
     });
   });
 
@@ -265,6 +324,75 @@ describe('Hono Worker routes', () => {
     expect(response.status).toBe(401);
   });
 
+  it('rejects an invalid JWT on the MAX-OS-1 bridge', async () => {
+    const response = await app.request(
+      '/os/kernel/message',
+      authorized('POST', { type: 'sim.step', payload: {} }),
+      { ...makeBindings(), IDENTITY_JWT_SECRET: 'different-signing-secret' },
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'UNAUTHENTICATED' },
+    });
+  });
+
+  it('rejects a malformed MAX-OS payload before dispatch', async () => {
+    const maxOsFetch = vi.fn(async () => Response.json({ ok: true }));
+    const response = await app.request(
+      '/os/kernel/message',
+      authorized('POST', { type: 'sim.step', payload: [] }),
+      makeBindings({ maxOsFetch }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_MESSAGE' },
+    });
+    expect(maxOsFetch).not.toHaveBeenCalled();
+  });
+
+  it('maps non-JSON MAX-OS responses to INVALID_KERNEL_RESPONSE', async () => {
+    const response = await app.request(
+      '/os/kernel/message',
+      authorized('POST', { type: 'sim.step', payload: {} }),
+      makeBindings({ maxOsFetch: async () => new Response('not-json') }),
+    );
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_KERNEL_RESPONSE' },
+    });
+  });
+
+  it('maps non-object MAX-OS responses to INVALID_KERNEL_RESPONSE', async () => {
+    const response = await app.request(
+      '/os/kernel/message',
+      authorized('POST', { type: 'sim.step', payload: {} }),
+      makeBindings({ maxOsFetch: async () => Response.json([]) }),
+    );
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_KERNEL_RESPONSE' },
+    });
+  });
+
+  it('rejects a contradictory MAX-OS success body with a failure status', async () => {
+    const response = await app.request(
+      '/os/kernel/message',
+      authorized('POST', { type: 'sim.step', payload: {} }),
+      makeBindings({
+        maxOsFetch: async () => Response.json({ ok: true, result: {} }, { status: 500 }),
+      }),
+    );
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_KERNEL_RESPONSE' },
+    });
+  });
+
   it('does not call MAX-OS-1 when DO governance denies the request', async () => {
     const maxOsFetch = vi.fn(async () => Response.json({ ok: true }));
     const response = await app.request(
@@ -278,6 +406,14 @@ describe('Hono Worker routes', () => {
     );
     expect(response.status).toBe(403);
     expect(maxOsFetch).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Umbrella governance denied the operation',
+      },
+      meta: { governance: { mode: 'strict', decision: 'denied' } },
+    });
   });
 
   it('normalizes MAX-OS-1 umbrella results', async () => {
@@ -288,8 +424,13 @@ describe('Hono Worker routes', () => {
     );
     expect(await response.json()).toMatchObject({
       ok: true,
-      lanes: [{ name: 'umbrella.os', result: { results: [{ result: { meta: { source: 'MAX-OS-1' } } }] } }],
-      meta: { umbrella: 'os-update', identity: { propagated: true } },
+      result: { accepted: true },
+      meta: {
+        umbrella: 'os-update',
+        kernel: 'MAX-OS-1',
+        type: 'identity.physics',
+        identity: { propagated: true },
+      },
     });
   });
 
@@ -301,12 +442,370 @@ describe('Hono Worker routes', () => {
       makeBindings({
         maxOsFetch: async (request) => {
           forwarded = await request.json<KernelEnvelope>();
-          return Response.json({ data: { accepted: true }, meta: { umbrella: 'os-update' } });
+          return Response.json({ ok: true, result: { accepted: true }, meta: { umbrella: 'os-update' } });
         },
       }),
     );
     expect(response.status).toBe(200);
-    expect(forwarded).toMatchObject({ identity: TOKEN, governanceContext: { tenant: 'earth', umbrellaMode: 'strict' } });
+    expect(forwarded).toMatchObject({
+      identity: 'test-user',
+      governanceContext: {
+        tenant: 'earth',
+        mode: 'strict',
+        umbrellaMode: 'strict',
+        decision: 'allowed',
+        rationale: 'Umbrella governance allows the operation',
+      },
+    });
+  });
+
+  it.each([
+    ['sim/behavior', 'sim.behavior'],
+    ['identity/timeline', 'identity.timeline'],
+    ['windows/focus', 'windows.focus'],
+    ['windows/state', 'windows.state'],
+    ['windows/timeline', 'windows.timeline'],
+    ['umbrella/enforcement', 'umbrella.enforcement'],
+    ['kernel/heatmap', 'kernel.heatmap'],
+    ['tec/pipeline', 'tec.pipeline'],
+    ['substrate/state', 'substrate.state'],
+    ['messages', 'messages'],
+    ['logs', 'logs'],
+    ['inference', 'inference'],
+  ])('exposes introspection route %s', async (route, kind) => {
+    const response = await app.request(`/api/introspection/${route}`, undefined, makeBindings());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      introspection: kind,
+      worker: 'planetary-max',
+    });
+  });
+});
+
+describe('PortalKernel simulation engine', () => {
+  it('moves an agent deterministically and emits a reversible diff', async () => {
+    const kernel = makeKernel();
+    const queued = await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent(
+        'agent-move-1',
+        'agent.move',
+        { agentId: 'agent-1', dx: 3, dy: -2, location: { x: 1, y: 4 } },
+        1,
+        'identity-1',
+      ),
+    );
+    const tick = await simulationRequest(kernel, '/kernel/sim/tick', 'POST');
+    const body = await tick.json<{
+      result: { snapshot: PortalKernelState; diff: SimTickDiff };
+    }>();
+
+    expect(queued.status).toBe(200);
+    expect(body.result.snapshot.agents['agent-1']).toMatchObject({
+      identityId: 'identity-1',
+      location: { x: 4, y: 2 },
+      tickVersion: 1,
+    });
+    expect(body.result.diff.changes[0]).toMatchObject({
+      eventId: 'agent-move-1',
+      before: null,
+      after: { location: { x: 4, y: 2 } },
+    });
+  });
+
+  it('orders window focus history by event time and id', async () => {
+    const kernel = makeKernel();
+    await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('window-focus-2', 'window.focus', { windowId: 'window-1', focus: true }, 2, 'identity-1'),
+    );
+    await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('window-focus-1', 'window.focus', { windowId: 'window-1', focus: false }, 1, 'identity-1'),
+    );
+    const tick = await simulationRequest(kernel, '/kernel/sim/tick', 'POST');
+    const body = await tick.json<{ result: { snapshot: PortalKernelState } }>();
+    const window = body.result.snapshot.windows['window-1'];
+
+    expect(window?.focus).toBe(true);
+    expect(window?.history.map((event) => event.id)).toEqual(['window-focus-1', 'window-focus-2']);
+    expect(window?.ownerIdentityId).toBe('identity-1');
+  });
+
+  it('reduces substrate stability after ordered shifts', async () => {
+    const kernel = makeKernel();
+    await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('substrate-shift-1', 'substrate.shift', { magnitude: 12.5 }, 1),
+    );
+    const tick = await simulationRequest(kernel, '/kernel/sim/tick', 'POST');
+    const body = await tick.json<{ result: { snapshot: PortalKernelState } }>();
+
+    expect(body.result.snapshot.substrate.stability).toBe(87.5);
+    expect(body.result.snapshot.substrate.anomalies[0]?.id).toBe('substrate-shift-1');
+  });
+
+  it('does not queue or apply a strictly denied event', async () => {
+    const kernel = makeKernel('strict');
+    const denied = await simulationRequest(kernel, '/kernel/sim/event', 'POST', {
+      event: simulationEvent('denied-shift', 'substrate.shift', { magnitude: 50 }, 1),
+      governanceContext: { deny: true },
+    });
+    const deniedBody = await denied.json<{
+      error: { code: string };
+      meta: { governance: { decision: string; eventId: string } };
+    }>();
+    await simulationRequest(kernel, '/kernel/sim/tick', 'POST');
+    const state = await simulationRequest(kernel, '/kernel/sim/state', 'GET');
+    const stateBody = await state.json<{ result: PortalKernelState }>();
+
+    expect(denied.status).toBe(403);
+    expect(deniedBody).toMatchObject({
+      error: { code: 'FORBIDDEN' },
+      meta: { governance: { decision: 'denied', eventId: 'denied-shift' } },
+    });
+    expect(stateBody.result.substrate.stability).toBe(100);
+    expect(stateBody.result.events).toEqual([]);
+  });
+
+  it('allows advisory findings while recording the governance decision', async () => {
+    const kernel = makeKernel('advisory');
+    const response = await simulationRequest(kernel, '/kernel/sim/event', 'POST', {
+      event: simulationEvent('advisory-shift', 'substrate.shift', { magnitude: 10 }, 1),
+      governanceContext: { deny: true },
+    });
+    const body = await response.json<{ meta: { governance: { decision: string } } }>();
+    await simulationRequest(kernel, '/kernel/sim/tick', 'POST');
+    const state = await simulationRequest(kernel, '/kernel/sim/state', 'GET');
+    const stateBody = await state.json<{ result: PortalKernelState }>();
+
+    expect(response.status).toBe(200);
+    expect(body.meta.governance.decision).toBe('advisory');
+    expect(stateBody.result.substrate.stability).toBe(90);
+  });
+
+  it('requires and preserves identity binding for agent and window events', async () => {
+    const kernel = makeKernel();
+    const missing = await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('agent-no-identity', 'agent.move', { agentId: 'agent-1', dx: 1, dy: 1 }, 1),
+    );
+    const accepted = await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('agent-owner', 'agent.move', { agentId: 'agent-1', dx: 1, dy: 1 }, 1, 'identity-1'),
+    );
+    const mismatch = await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('agent-other', 'agent.move', { agentId: 'agent-1', dx: 1, dy: 1 }, 2, 'identity-2'),
+    );
+
+    expect(missing.status).toBe(400);
+    expect(accepted.status).toBe(200);
+    expect(mismatch.status).toBe(403);
+    expect(await mismatch.json()).toMatchObject({ error: { code: 'IDENTITY_MISMATCH' } });
+  });
+
+  it('produces identical snapshots and diffs for the same events', async () => {
+    const first = makeKernel();
+    const second = makeKernel();
+    const events = [
+      simulationEvent('move-b', 'agent.move', { agentId: 'agent-1', dx: 2, dy: 0 }, 1, 'identity-1'),
+      simulationEvent('move-a', 'agent.move', { agentId: 'agent-1', dx: 0, dy: 3 }, 1, 'identity-1'),
+      simulationEvent('focus', 'window.focus', { windowId: 'window-1', focus: true }, 2, 'identity-1'),
+    ];
+    for (const event of events) {
+      await simulationRequest(first, '/kernel/sim/event', 'POST', event);
+      await simulationRequest(second, '/kernel/sim/event', 'POST', event);
+    }
+
+    const firstTick = await simulationRequest(first, '/kernel/sim/tick', 'POST');
+    const secondTick = await simulationRequest(second, '/kernel/sim/tick', 'POST');
+    expect(await firstTick.json()).toEqual(await secondTick.json());
+  });
+
+  it('handles simulation command and tick message types with simulation metadata', async () => {
+    const kernel = makeKernel();
+    const command = await kernelRequest(
+      kernel,
+      envelope('sim.agent.command', {
+        event: simulationEvent('command-move', 'agent.move', { agentId: 'agent-1', dx: 2, dy: 1 }, 1),
+      }),
+    );
+    const tick = await kernelRequest(kernel, envelope('sim.agent.tick', { entityId: 'agent-1' }));
+
+    expect(await command.json()).toMatchObject({
+      ok: true,
+      meta: { sim: { entityId: 'agent-1', kind: 'agent', tickVersion: 0 } },
+    });
+    expect(await tick.json()).toMatchObject({
+      ok: true,
+      result: { entity: { id: 'agent-1', location: { x: 2, y: 1 } } },
+      meta: { sim: { entityId: 'agent-1', kind: 'agent', tickVersion: 1 } },
+    });
+  });
+
+  it('progresses TEC tasks deterministically across a tick', async () => {
+    const kernel = makeKernel();
+    await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('task-create', 'tec.task.created', { taskId: 'task-1' }, 1, 'identity-1'),
+    );
+    await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('task-complete', 'tec.task.completed', { taskId: 'task-1' }, 2, 'identity-1'),
+    );
+    await simulationRequest(kernel, '/kernel/sim/tick', 'POST');
+    const state = await simulationRequest(kernel, '/kernel/sim/state', 'GET');
+    const body = await state.json<{
+      result: { tecTasks: Record<string, { status: string; tickVersion: number; identityId: string }> };
+    }>();
+
+    expect(body.result.tecTasks['task-1']).toEqual({
+      id: 'task-1',
+      identityId: 'identity-1',
+      status: 'completed',
+      tickVersion: 2,
+    });
+  });
+
+  it('bounds aggregate queued state and per-window history', async () => {
+    const storageKernel = makeKernel();
+    let storageStatus = 200;
+    for (let index = 0; index < 20; index += 1) {
+      const response = await simulationRequest(
+        storageKernel,
+        '/kernel/sim/event',
+        'POST',
+        simulationEvent(
+          `large-layout-${index}`,
+          'window.layout.change',
+          { windowId: `window-${index}`, layout: { content: 'x'.repeat(60_000) } },
+          index,
+          'identity-1',
+        ),
+      );
+      storageStatus = response.status;
+      if (storageStatus === 429) break;
+    }
+    expect(storageStatus).toBe(429);
+
+    const historyStorage = new MemoryStorage();
+    const existingHistory: ReadonlyArray<SimEvent> = Array.from(
+      { length: 200 },
+      (_, index: number): SimEvent =>
+        simulationEvent(
+          `focus-${String(index).padStart(3, '0')}`,
+          'window.focus',
+          { windowId: 'window-history', focus: index % 2 === 0 },
+          index,
+          'identity-1',
+        ),
+    );
+    await historyStorage.put('simulation', {
+      agents: {},
+      windows: {
+        'window-history': {
+          id: 'window-history',
+          ownerIdentityId: 'identity-1',
+          focus: false,
+          layout: {},
+          openSince: 0,
+          history: existingHistory,
+        },
+      },
+      substrate: {
+        id: 'substrate',
+        resources: {},
+        topology: {},
+        stability: 100,
+        anomalies: [],
+      },
+      events: [],
+      tick: 0,
+    } satisfies PortalKernelState);
+    const historyKernel = makeKernel('strict', historyStorage);
+    await simulationRequest(
+      historyKernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent(
+        'focus-200',
+        'window.focus',
+        { windowId: 'window-history', focus: true },
+        200,
+        'identity-1',
+      ),
+    );
+    const tick = await simulationRequest(historyKernel, '/kernel/sim/tick', 'POST');
+    const body = await tick.json<{ result: { snapshot: PortalKernelState } }>();
+    const history = body.result.snapshot.windows['window-history']?.history;
+    expect(history).toHaveLength(200);
+    expect(history?.[0]?.id).toBe('focus-001');
+    expect(history?.at(-1)?.id).toBe('focus-200');
+  });
+
+  it('feeds simulation state into introspection surfaces', async () => {
+    const kernel = makeKernel();
+    const bindings = makeBindings({ kernel });
+    await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('introspection-agent', 'agent.move', { agentId: 'agent-1', dx: 1, dy: 0 }, 1, 'identity-1'),
+    );
+    await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('introspection-window', 'window.focus', { windowId: 'window-1', focus: true }, 2, 'identity-1'),
+    );
+    await simulationRequest(
+      kernel,
+      '/kernel/sim/event',
+      'POST',
+      simulationEvent('introspection-shift', 'substrate.shift', { magnitude: 5 }, 3),
+    );
+    await simulationRequest(kernel, '/kernel/sim/tick', 'POST');
+
+    const behavior = await app.request('/api/introspection/sim/behavior', undefined, bindings);
+    const windows = await app.request('/api/introspection/windows/state', undefined, bindings);
+    const timeline = await app.request('/api/introspection/windows/timeline', undefined, bindings);
+    const substrate = await app.request('/api/introspection/substrate/state', undefined, bindings);
+    const messages = await app.request('/api/introspection/messages', undefined, bindings);
+    const inference = await app.request('/api/introspection/inference', undefined, bindings);
+
+    expect(await behavior.json()).toMatchObject({ result: { activeAgents: 1, anomalies: 1, tick: 1 } });
+    expect(await windows.json()).toMatchObject({ result: [{ id: 'window-1', focus: true }] });
+    expect(await timeline.json()).toMatchObject({ result: [{ id: 'introspection-window' }] });
+    expect(await substrate.json()).toMatchObject({ result: { stability: 95 } });
+    const messageBody = await messages.json<{ result: ReadonlyArray<{ id: string }> }>();
+    expect(messageBody.result.map((event) => event.id)).toEqual([
+      'introspection-agent',
+      'introspection-window',
+      'introspection-shift',
+    ]);
+    expect(await inference.json()).toMatchObject({
+      result: { deterministic: true, tick: 1, processedEvents: 3, reversibleDiffs: 1 },
+    });
   });
 });
 
@@ -332,6 +831,17 @@ describe('PortalKernel Durable Object', () => {
       ok: true,
       lanes: [{ name: 'kernel' }],
       data: { operation: 'sim.step', accepted: true },
+    });
+  });
+
+  it('returns deterministic envelope-bound introspection snapshots', async () => {
+    const response = await kernelRequest(makeKernel(), envelope('introspection.sim.behavior'));
+    expect(await response.json()).toMatchObject({
+      result: {
+        kind: 'sim.behavior',
+        messageId: 'message-introspection.sim.behavior',
+        scope: 'portal-kernel',
+      },
     });
   });
 
@@ -363,7 +873,6 @@ describe('PortalKernel Durable Object', () => {
 
   it('returns governance deltas in advisory mode', async () => {
     const value = envelope('sim.step', { structuralTruth: false }, { deny: true });
-    value.governanceContext.umbrellaMode = 'advisory';
     const response = await kernelRequest(makeKernel('advisory'), value);
     const result = await response.json<{ meta: { governance: { decision: string; deltas: unknown[] } } }>();
     expect(result.meta.governance.decision).toBe('advisory');
@@ -372,7 +881,6 @@ describe('PortalKernel Durable Object', () => {
 
   it('bypasses governance rules in off mode', async () => {
     const value = envelope('sim.step', { structuralTruth: false }, { deny: true });
-    value.governanceContext.umbrellaMode = 'off';
     const response = await kernelRequest(makeKernel('off'), value);
     expect(await response.json()).toMatchObject({ ok: true, meta: { governance: { mode: 'off', decision: 'bypassed' } } });
   });
@@ -391,26 +899,12 @@ describe('PortalKernel Durable Object', () => {
     const result = await readKernelResult(raw, value, 'PortalKernel');
     expect(result).toMatchObject({
       ok: true,
-      lanes: [
-        {
-          name: 'umbrella.os',
-          result: {
-            results: [
-              {
-                result: {
-                  data: {
-                    osPermissions: { deploy: true },
-                    osIdentity: {},
-                    osGovernanceFlags: {},
-                    osTruthInvariants: {},
-                  },
-                  meta: { source: 'PortalKernel', governance: 'strict' },
-                },
-              },
-            ],
-          },
-        },
-      ],
+      result: {
+        osPermissions: { deploy: true },
+        osIdentity: {},
+        osGovernanceFlags: {},
+        osTruthInvariants: {},
+      },
       meta: { umbrella: 'os-update' },
     });
   });

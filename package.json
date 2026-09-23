@@ -5,6 +5,7 @@
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
+    "lint": "tsc --noEmit",
     "test": "vitest run --reporter=verbose",
     "deploy": "wrangler deploy",
     "generate:jwt": "node scripts/generate-jwt.mjs",
