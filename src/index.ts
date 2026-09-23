@@ -253,10 +253,20 @@ export {
   parseTruthFormation,
 } from "./institute";
 export {
+  enforcePlanetaryGovernance,
+  executePlanetaryRuntime,
+  executePlanetaryTick,
+  generatePlanetaryDelta,
   initialPlanetaryState,
   isPlanetaryFailure,
+  planetaryCollapse,
+  planetaryMerge,
+  planetarySync,
+  planetaryTruthUpdate,
   parsePlanetarySynchronization,
   synchronizePlanetaryState,
+  synchronizePlanetaryRuntime,
+  stabilizePlanetaryExecution,
 } from "./planetary";
 export { PortalKernel } from "./portal-kernel";
 export type {
@@ -278,12 +288,17 @@ export type {
   PortalKernelState,
   PlanetaryAnomaly,
   PlanetaryCanon,
+  PlanetaryDelta,
+  PlanetaryExecutionState,
   PlanetaryGovernanceContext,
   PlanetaryIdentity,
+  PlanetaryNode,
   PlanetaryNodeSnapshot,
   PlanetaryQuantumState,
+  PlanetaryRuntimeState,
   PlanetaryState,
   PlanetarySubstrate,
+  PlanetarySyncPacket,
   PlanetarySynchronization,
   QuantumBranch,
   SimAgentState,

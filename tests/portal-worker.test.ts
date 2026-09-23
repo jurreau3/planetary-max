@@ -165,15 +165,25 @@ function instituteFormation(
 
 function planetaryNode(
   nodeId: string,
-  options: { identitySignature?: string; truthStability?: number; quantumSignature?: string } = {},
+  options: {
+    identitySignature?: string;
+    identityCurvature?: number;
+    truthStability?: number;
+    truthDescription?: string;
+    quantumSignature?: string;
+    probability?: number;
+    tick?: number;
+  } = {},
 ): Record<string, unknown> {
   const quantumSignature = options.quantumSignature ?? 'quantum-stable';
   return {
     nodeId,
+    tick: options.tick ?? 1,
+    inferenceDelta: { hypothesesProcessed: 1 },
     identities: [{
       id: 'identity-1',
       originNode: 'node-a',
-      curvature: 0.4,
+      curvature: options.identityCurvature ?? 0.4,
       signature: options.identitySignature ?? 'identity-stable',
       timeline: {
         identityId: 'identity-1',
@@ -190,7 +200,7 @@ function planetaryNode(
     quantumBranches: [{
       id: `branch-${nodeId}`,
       node: nodeId,
-      probability: 0.8,
+      probability: options.probability ?? 0.8,
       curvature: 0.3,
       signature: quantumSignature,
     }],
@@ -198,7 +208,7 @@ function planetaryNode(
       truths: {
         'truth-global': {
           id: 'truth-global',
-          description: 'Shared planetary structure',
+          description: options.truthDescription ?? 'Shared planetary structure',
           sourceFacts: ['fact-global'],
           stability: options.truthStability ?? 0.8,
           curvature: 0.3,
@@ -216,11 +226,13 @@ function planetaryNode(
 function planetarySynchronization(
   nodes: Record<string, unknown>[],
   governance: Record<string, unknown> = {},
+  runtime: { at?: number; collapsePolicy?: string; seed?: string } = {},
 ): Record<string, unknown> {
   return {
-    at: 20,
+    at: runtime.at ?? 20,
     nodes,
-    collapsePolicy: 'governed',
+    collapsePolicy: runtime.collapsePolicy ?? 'governed',
+    ...(runtime.seed === undefined ? {} : { seed: runtime.seed }),
     governance: {
       mode: 'strict',
       nodePolicies: {},
@@ -234,10 +246,11 @@ function planetarySynchronization(
 async function planetaryRequest(
   kernel: PortalKernel,
   payload: Record<string, unknown>,
+  type = 'planetary.sync',
 ): Promise<Response> {
   return app.request(
     '/api/kernel/message',
-    authorized('POST', { type: 'planetary.sync', payload }),
+    authorized('POST', { type, payload }),
     makeBindings({ kernel }),
   );
 }
@@ -603,6 +616,7 @@ describe('Hono Worker routes', () => {
     ['planetary/quantum', 'planetary.quantum'],
     ['planetary/canon', 'planetary.canon'],
     ['planetary/governance', 'planetary.governance'],
+    ['planetary/state', 'planetary.state'],
   ])('exposes introspection route %s', async (route, kind) => {
     const response = await app.request(`/api/introspection/${route}`, undefined, makeBindings());
     expect(response.status).toBe(200);
@@ -786,13 +800,25 @@ describe('Planetary Mode', () => {
     const second = makeKernel();
     const nodeA = planetaryNode('node-a');
     const nodeB = planetaryNode('node-b');
-    const firstResponse = await planetaryRequest(first, planetarySynchronization([nodeA, nodeB]));
-    const secondResponse = await planetaryRequest(second, planetarySynchronization([nodeB, nodeA]));
+    const firstResponse = await planetaryRequest(
+      first,
+      planetarySynchronization([nodeA, nodeB]),
+      'planetary.tick',
+    );
+    const secondResponse = await planetaryRequest(
+      second,
+      planetarySynchronization([nodeB, nodeA]),
+      'planetary.tick',
+    );
     const firstBody = await firstResponse.json<{ result: { state: unknown } }>();
     const secondBody = await secondResponse.json<{ result: { state: unknown } }>();
 
     expect(firstResponse.status).toBe(200);
     expect(firstBody.result.state).toEqual(secondBody.result.state);
+    expect(firstBody.result.state).toMatchObject({
+      globalTick: 1,
+      packetSignature: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
   });
 
   it('forms a global canon and synchronized governed quantum collapse', async () => {
@@ -833,7 +859,7 @@ describe('Planetary Mode', () => {
     });
   });
 
-  it('rejects divergent identity signatures in strict mode without persisting state', async () => {
+  it('reconciles divergent identity signatures deterministically in strict mode', async () => {
     const kernel = makeKernel();
     const response = await planetaryRequest(
       kernel,
@@ -841,12 +867,46 @@ describe('Planetary Mode', () => {
         planetaryNode('node-a', { identitySignature: 'signature-a' }),
         planetaryNode('node-b', { identitySignature: 'signature-b' }),
       ]),
+      'planetary.tick',
     );
-    const state = await kernel.fetch(new Request('https://kernel.test/kernel/planetary/state'));
 
-    expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ error: { code: 'PLANETARY_GOVERNANCE_DENIED' } });
-    expect(await state.json()).toMatchObject({ result: { synchronizedAt: 0, identities: {} } });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      result: {
+        state: {
+          identities: { 'identity-1': { signature: 'signature-a' } },
+          nodes: {
+            'node-a': { identities: [{ signature: 'signature-a' }] },
+            'node-b': { identities: [{ signature: 'signature-a' }] },
+          },
+          advisories: ['identity:identity-1:replica-divergence'],
+        },
+      },
+    });
+  });
+
+  it('reconciles divergent identity curvature across every node in strict mode', async () => {
+    const response = await planetaryRequest(
+      makeKernel(),
+      planetarySynchronization([
+        planetaryNode('node-a', { identityCurvature: 0.3 }),
+        planetaryNode('node-b', { identityCurvature: 0.6 }),
+      ]),
+      'planetary.tick',
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      result: {
+        state: {
+          identities: { 'identity-1': { curvature: 0.375 } },
+          nodes: {
+            'node-a': { identities: [{ curvature: 0.375 }] },
+            'node-b': { identities: [{ curvature: 0.375 }] },
+          },
+        },
+      },
+    });
   });
 
   it('filters unsafe quantum signatures under strict global governance', async () => {
@@ -884,6 +944,143 @@ describe('Planetary Mode', () => {
     });
   });
 
+  it('reproduces probabilistic collapse from the same seed', async () => {
+    const payload = planetarySynchronization(
+      [
+        planetaryNode('node-a', { quantumSignature: 'branch-a', probability: 0.35, tick: 4 }),
+        planetaryNode('node-b', { quantumSignature: 'branch-b', probability: 0.65, tick: 7 }),
+      ],
+      {},
+      { collapsePolicy: 'probabilistic', seed: 'reproducible-seed' },
+    );
+    const first = await planetaryRequest(makeKernel(), payload, 'planetary.tick');
+    const second = await planetaryRequest(makeKernel(), payload, 'planetary.tick');
+    const firstBody = await first.json<{
+      result: { state: { globalTick: number; quantum: { selectedBranch: unknown } } };
+    }>();
+    const secondBody = await second.json<{
+      result: { state: { quantum: { selectedBranch: unknown } } };
+    }>();
+
+    expect(first.status).toBe(200);
+    expect(firstBody.result.state.globalTick).toBe(7);
+    expect(firstBody.result.state.quantum.selectedBranch).toEqual(
+      secondBody.result.state.quantum.selectedBranch,
+    );
+  });
+
+  it('propagates collapse and stabilizes canon and epistemic timelines on every tick', async () => {
+    const response = await planetaryRequest(
+      makeKernel(),
+      planetarySynchronization([planetaryNode('node-a'), planetaryNode('node-b')]),
+      'planetary.tick',
+    );
+
+    expect(await response.json()).toMatchObject({
+      result: {
+        state: {
+          canon: {
+            version: 2,
+            updatedAt: 20,
+            globalStability: 0.9,
+            truths: { 'truth-global': { stability: 0.9, updatedAt: 20 } },
+          },
+          identities: {
+            'identity-1': {
+              curvature: 0.35,
+              timeline: {
+                events: expect.arrayContaining([expect.objectContaining({
+                  id: 'planetary:1:identity-1:truth-global:updated',
+                  action: 'updated',
+                  meta: expect.objectContaining({
+                    governance: { mode: 'strict', decision: 'allowed' },
+                  }),
+                })]),
+              },
+            },
+          },
+          nodes: {
+            'node-a': {
+              quantumBranches: [{ signature: 'quantum-stable', probability: 1 }],
+              canon: { version: 2 },
+              identities: [{ curvature: 0.35 }],
+            },
+            'node-b': {
+              quantumBranches: [{ signature: 'quantum-stable', probability: 1 }],
+              canon: { version: 2 },
+              identities: [{ curvature: 0.35 }],
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it('deprecates conflicting cross-node truths in identity timelines', async () => {
+    const response = await planetaryRequest(
+      makeKernel(),
+      planetarySynchronization([
+        planetaryNode('node-a'),
+        planetaryNode('node-b', { truthDescription: 'Conflicting planetary structure' }),
+      ]),
+      'planetary.tick',
+    );
+
+    expect(await response.json()).toMatchObject({
+      result: {
+        state: {
+          canon: { version: 2, truths: {}, globalStability: 0 },
+          identities: {
+            'identity-1': {
+              timeline: {
+                events: expect.arrayContaining([expect.objectContaining({
+                  id: 'planetary:1:identity-1:truth-global:deprecated',
+                  action: 'deprecated',
+                })]),
+              },
+            },
+          },
+          advisories: ['truth:truth-global:global-convergence-conflict'],
+        },
+      },
+    });
+  });
+
+  it('requires a seed for probabilistic collapse', async () => {
+    const response = await planetaryRequest(
+      makeKernel(),
+      planetarySynchronization(
+        [planetaryNode('node-a'), planetaryNode('node-b')],
+        {},
+        { collapsePolicy: 'probabilistic' },
+      ),
+      'planetary.tick',
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: 'INVALID_PLANETARY_STATE' } });
+  });
+
+  it('enforces strict planetary curvature limits', async () => {
+    const response = await planetaryRequest(
+      makeKernel(),
+      planetarySynchronization(
+        [planetaryNode('node-a'), planetaryNode('node-b')],
+        { globalTruthRules: { curvatureLimit: 0.2 } },
+      ),
+      'planetary.tick',
+    );
+
+    expect(await response.json()).toMatchObject({
+      result: {
+        state: {
+          identities: { 'identity-1': { curvature: 0.2 } },
+          quantum: { globalCurvature: 0.2, selectedBranch: { curvature: 0.2 } },
+        },
+      },
+    });
+  });
+
   it('exposes every planetary introspection surface', async () => {
     const kernel = makeKernel();
     const bindings = makeBindings({ kernel });
@@ -891,7 +1088,7 @@ describe('Planetary Mode', () => {
       kernel,
       planetarySynchronization([planetaryNode('node-a'), planetaryNode('node-b')]),
     );
-    const paths = ['identity', 'substrate', 'quantum', 'canon', 'governance'];
+    const paths = ['identity', 'substrate', 'quantum', 'canon', 'governance', 'state'];
     for (const path of paths) {
       const response = await app.request(`/api/introspection/planetary/${path}`, undefined, bindings);
       expect(response.status).toBe(200);

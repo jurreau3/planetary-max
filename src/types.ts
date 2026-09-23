@@ -351,6 +351,7 @@ export type PlanetaryQuantumState = Readonly<{
   globalCurvature: number;
   globalSignature: string;
   collapsePolicy: "deterministic" | "probabilistic" | "governed";
+  selectedBranch: QuantumBranch | null;
 }>;
 
 export type PlanetaryCanon = Readonly<{
@@ -362,11 +363,45 @@ export type PlanetaryCanon = Readonly<{
 
 export type PlanetaryNodeSnapshot = Readonly<{
   nodeId: string;
+  tick?: number;
   identities: ReadonlyArray<PlanetaryIdentity>;
   substrates: ReadonlyArray<PlanetarySubstrate>;
   quantumBranches: ReadonlyArray<QuantumBranch>;
   canon: InstituteCanon;
   truthSignatures: Readonly<Record<string, string>>;
+  inferenceDelta?: Readonly<Record<string, unknown>>;
+}>;
+
+export type PlanetaryNode = Readonly<{
+  nodeId: string;
+  tick: number;
+  identities: ReadonlyArray<PlanetaryIdentity>;
+  substrates: ReadonlyArray<PlanetarySubstrate>;
+  quantumBranches: ReadonlyArray<QuantumBranch>;
+  canon: InstituteCanon;
+  truthSignatures: Readonly<Record<string, string>>;
+  inferenceDelta: Readonly<Record<string, unknown>>;
+}>;
+
+export type PlanetaryDelta = Readonly<{
+  nodeId: string;
+  tick: number;
+  simDelta: Readonly<{
+    identities: ReadonlyArray<PlanetaryIdentity>;
+    substrates: ReadonlyArray<PlanetarySubstrate>;
+  }>;
+  inferenceDelta: Readonly<Record<string, unknown>>;
+  quantumDelta: Readonly<{ branches: ReadonlyArray<QuantumBranch> }>;
+  instituteDelta: Readonly<{
+    canon: InstituteCanon;
+    truthSignatures: Readonly<Record<string, string>>;
+  }>;
+}>;
+
+export type PlanetarySyncPacket = Readonly<{
+  deltas: ReadonlyArray<PlanetaryDelta>;
+  globalTick: number;
+  signature: string;
 }>;
 
 export type PlanetarySynchronization = Readonly<{
@@ -378,12 +413,20 @@ export type PlanetarySynchronization = Readonly<{
 }>;
 
 export type PlanetaryState = Readonly<{
+  globalTick: number;
+  nodes: Readonly<Record<string, PlanetaryNode>>;
   identities: Readonly<Record<string, PlanetaryIdentity>>;
   substrates: Readonly<Record<string, PlanetarySubstrate>>;
+  substrate: PlanetarySubstrate;
   quantum: PlanetaryQuantumState;
   canon: PlanetaryCanon;
   governance: PlanetaryGovernanceContext;
   coordinatorIdentity: string;
   synchronizedAt: number;
+  packetSignature: string;
   advisories: ReadonlyArray<string>;
 }>;
+
+export type PlanetaryRuntimeState = PlanetaryState;
+
+export type PlanetaryExecutionState = PlanetaryRuntimeState;

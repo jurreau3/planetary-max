@@ -28,9 +28,10 @@ import {
 } from "./institute";
 import {
   initialPlanetaryState,
+  executePlanetaryRuntime,
   isPlanetaryFailure,
   parsePlanetarySynchronization,
-  synchronizePlanetaryState,
+  synchronizePlanetaryRuntime,
   type PlanetaryFailure,
 } from "./planetary";
 
@@ -309,7 +310,7 @@ export class PortalKernel {
       };
       return { data: { timeline } };
     }
-    if (envelope.type === "planetary.sync") {
+    if (envelope.type === "planetary.sync" || envelope.type === "planetary.tick") {
       return this.synchronizePlanetary(envelope);
     }
     if (envelope.type === "planetary.state") {
@@ -430,13 +431,22 @@ export class PortalKernel {
   }
 
   private async synchronizePlanetary(envelope: KernelEnvelope): Promise<DispatchOutput | Response> {
+    if (envelope.payload.seed !== undefined && typeof envelope.payload.seed !== "string") {
+      return failureResponse("INVALID_PLANETARY_STATE", "Planetary collapse seed must be a string", 400);
+    }
     const synchronization = parsePlanetarySynchronization(envelope.payload, envelope.identity);
     if (isPlanetaryFailure(synchronization)) {
       return failureResponse(synchronization.code, synchronization.message, 400);
     }
-    const result: PlanetaryState | PlanetaryFailure = synchronizePlanetaryState(synchronization);
+    const result: PlanetaryState | PlanetaryFailure = envelope.type === "planetary.tick"
+      ? await executePlanetaryRuntime(
+        synchronization,
+        typeof envelope.payload.seed === "string" ? envelope.payload.seed : undefined,
+      )
+      : await synchronizePlanetaryRuntime(synchronization);
     if (isPlanetaryFailure(result)) {
-      return failureResponse(result.code, result.message, 403);
+      const status: number = result.code === "INVALID_PLANETARY_STATE" ? 400 : 403;
+      return failureResponse(result.code, result.message, status);
     }
     if (jsonSize(result) > MAX_STORAGE_VALUE_BYTES) {
       return failureResponse("PLANETARY_STATE_LIMIT", "Planetary state exceeds the durable storage limit", 413);

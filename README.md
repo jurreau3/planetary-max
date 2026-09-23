@@ -230,18 +230,33 @@ identity replicas, substrates, quantum branches, Institute canon, and
 truth-to-quantum signature map. PortalKernel sorts and validates the snapshots,
 then atomically replaces planetary state with a deterministic aggregation.
 
-Strict mode requires identity signatures and epistemic events to agree across
-replicas, filters quantum signatures denied by global collapse rules, and only
-admits canon truths that are structurally stable with converged signatures on
-every active node. `globalTruthRules.minStability` and per-node `enabled`
-policies override local state. Current state is also available through the
-`planetary.state` kernel message and these introspection views:
+`planetary.tick` runs the full runtime loop over the same payload. Nodes may add
+an explicit `tick` and `inferenceDelta`; the runtime emits deterministic
+`PlanetaryDelta` objects, computes a SHA-256 `PlanetarySyncPacket` signature,
+sets `globalTick` to the maximum node tick, merges global state, updates canon
+stability, applies governance, and performs collapse. The selected collapse is
+propagated to every node, identity curvature is updated consistently, canon
+stability/version advances, and identity-bound epistemic timelines record each
+truth update or deprecation. Deterministic and governed collapse select the
+highest allowed probability. Probabilistic collapse requires a non-empty `seed`
+and uses WebCrypto so identical packets and seeds reproduce the same branch.
+
+Strict mode reconciles divergent identity replicas using stable ordinal choices
+and averaged curvature, records the reconciliation in `advisories`, filters
+quantum signatures denied by global collapse rules, and only admits canon truths
+that are structurally stable with converged signatures on every active node.
+Conflicting truths are removed from the global canon and recorded as deprecated
+on epistemic timelines. `globalTruthRules.minStability`, `curvatureLimit`, and
+per-node `enabled` policies override local state. Current execution state is also
+available through the `planetary.state` kernel message and these introspection
+views:
 
 - `GET /api/introspection/planetary/identity`
 - `GET /api/introspection/planetary/substrate`
 - `GET /api/introspection/planetary/quantum`
 - `GET /api/introspection/planetary/canon`
 - `GET /api/introspection/planetary/governance`
+- `GET /api/introspection/planetary/state`
 
 ## Development
 

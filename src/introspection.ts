@@ -36,7 +36,8 @@ export type IntrospectionKind =
   | "planetary.substrate"
   | "planetary.quantum"
   | "planetary.canon"
-  | "planetary.governance";
+  | "planetary.governance"
+  | "planetary.state";
 
 type SimulationIntrospectionState = PortalKernelState & Readonly<{
   eventLog: ReadonlyArray<SimEvent>;
@@ -67,6 +68,7 @@ const PLANETARY_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> =
     "planetary.quantum",
     "planetary.canon",
     "planetary.governance",
+    "planetary.state",
   ]);
 
 const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<IntrospectionKind>([
@@ -112,6 +114,7 @@ export function attachIntrospectionRoutes(
   app.get("/api/introspection/planetary/quantum", introspectionHandler("planetary.quantum"));
   app.get("/api/introspection/planetary/canon", introspectionHandler("planetary.canon"));
   app.get("/api/introspection/planetary/governance", introspectionHandler("planetary.governance"));
+  app.get("/api/introspection/planetary/state", introspectionHandler("planetary.state"));
 }
 
 function introspectionHandler(
@@ -197,10 +200,13 @@ function instituteIntrospectionResult(
 
 function planetaryIntrospectionResult(kind: IntrospectionKind, state: PlanetaryState): unknown {
   if (kind === "planetary.identity") return state.identities;
-  if (kind === "planetary.substrate") return state.substrates;
+  if (kind === "planetary.substrate") return state.substrate;
   if (kind === "planetary.quantum") return state.quantum;
   if (kind === "planetary.canon") return state.canon;
-  return { ...state.governance, advisories: state.advisories };
+  if (kind === "planetary.governance") {
+    return { ...state.governance, advisories: state.advisories };
+  }
+  return state;
 }
 
 function instituteSignatureOverlays(
@@ -403,9 +409,11 @@ function isInstituteState(value: unknown): value is InstituteState {
 }
 
 function isPlanetaryState(value: unknown): value is PlanetaryState {
-  return isRecord(value) && isRecord(value.identities) && isRecord(value.substrates) &&
+  return isRecord(value) && typeof value.globalTick === "number" && isRecord(value.nodes) &&
+    isRecord(value.identities) && isRecord(value.substrates) && isRecord(value.substrate) &&
     isRecord(value.quantum) && isRecord(value.canon) && isRecord(value.governance) &&
-    typeof value.synchronizedAt === "number" && Array.isArray(value.advisories);
+    typeof value.synchronizedAt === "number" && typeof value.packetSignature === "string" &&
+    Array.isArray(value.advisories);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
