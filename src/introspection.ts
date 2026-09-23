@@ -14,7 +14,7 @@ export type IntrospectionKind =
   | "logs"
   | "inference";
 
-const ROUTES: Array<[string, IntrospectionKind]> = [
+const INTROSPECTION_ROUTES: Array<[string, IntrospectionKind]> = [
   ["/api/introspection/sim/behavior", "sim.behavior"],
   ["/api/introspection/identity/timeline", "identity.timeline"],
   ["/api/introspection/windows/focus", "windows.focus"],
@@ -30,13 +30,13 @@ const ROUTES: Array<[string, IntrospectionKind]> = [
 ];
 
 export function attachIntrospectionRoutes(app: Hono) {
-  for (const [path, kind] of ROUTES) {
+  for (const [path, kind] of INTROSPECTION_ROUTES) {
     app.get(path, (c) =>
       c.json({
         ok: true,
         introspection: kind,
         worker: "planetary-max",
-      })
+      }),
     );
   }
 }
