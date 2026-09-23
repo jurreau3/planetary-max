@@ -243,13 +243,42 @@ async function kernelResponse(env: Bindings, envelope: KernelEnvelope): Promise<
 
 export { createEnvelope, extractLaneData, readKernelResult } from "./kernel-bridge";
 export { resolveUmbrellaMode } from "./governance";
+export {
+  detectInferencePatterns,
+  extractKernelResultFacts,
+  extractQuantumFacts,
+  extractSimulationFacts,
+  generateInferenceRecommendations,
+  runInference,
+} from "./inference";
+export {
+  collapseQuantumBranches,
+  deriveIdentityCurvature,
+  generateQuantumBranches,
+  generateQuantumOverlay,
+  normalizeProbabilities,
+  quantumGovernanceFromContext,
+} from "./quantumn";
 export { PortalKernel } from "./portal-kernel";
 export type {
   Bindings,
+  GovernanceInference,
+  InferenceArtifacts,
+  InferenceFact,
+  InferenceFactKind,
+  InferenceHypothesis,
+  InferenceRecommendation,
+  InferenceRecommendationTarget,
   KernelEnvelope,
   KernelLane,
   KernelResult,
   PortalKernelState,
+  QuantumBranch,
+  QuantumCollapsePolicy,
+  QuantumGovernanceContext,
+  QuantumOverlay,
+  QuantumSignature,
+  QuantumState,
   SimAgentState,
   SimEvent,
   SimEventType,
