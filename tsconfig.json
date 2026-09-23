@@ -6,6 +6,8 @@
     "lib": ["ES2022", "WebWorker"],
     "types": ["@cloudflare/workers-types"],
     "strict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
     "noEmit": true,
     "skipLibCheck": true
   },
