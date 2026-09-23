@@ -134,6 +134,126 @@ function simulationEvent(
   return { id, type, payload, at, ...(identityId === undefined ? {} : { identityId }) };
 }
 
+function instituteFormation(
+  id: string,
+  at: number,
+  confidence = 0.9,
+): Record<string, unknown> {
+  const factId = `${id}-fact`;
+  return {
+    id,
+    description: `Stable structure ${id}`,
+    at,
+    facts: [{ id: factId, description: `Inference ${id}`, confidence }],
+    hypotheses: [{
+      id: `${id}-hypothesis`,
+      factIds: [factId],
+      confidence: 0.85,
+      curvatureGuidance: 0.4,
+      collapsePolicySuggestion: 'governed',
+    }],
+    quantumBranches: [
+      { factId, probability: 0.8, curvature: 0.25, signature: 'quantum-stable' },
+      { factId, probability: 0.7, curvature: 0.5, signature: 'quantum-stable' },
+    ],
+    simulationDeltas: [
+      { factId, tick: 1 },
+      { factId, tick: 2 },
+    ],
+  };
+}
+
+function planetaryNode(
+  nodeId: string,
+  options: { identitySignature?: string; truthStability?: number; quantumSignature?: string } = {},
+): Record<string, unknown> {
+  const quantumSignature = options.quantumSignature ?? 'quantum-stable';
+  return {
+    nodeId,
+    identities: [{
+      id: 'identity-1',
+      originNode: 'node-a',
+      curvature: 0.4,
+      signature: options.identitySignature ?? 'identity-stable',
+      timeline: {
+        identityId: 'identity-1',
+        events: [{ id: 'truth-global:1:added', truthId: 'truth-global', action: 'added', at: 10, meta: {} }],
+      },
+    }],
+    substrates: [{
+      id: 'earth',
+      nodes: [nodeId],
+      topology: { region: nodeId },
+      stability: 0.9,
+      anomalies: [],
+    }],
+    quantumBranches: [{
+      id: `branch-${nodeId}`,
+      node: nodeId,
+      probability: 0.8,
+      curvature: 0.3,
+      signature: quantumSignature,
+    }],
+    canon: {
+      truths: {
+        'truth-global': {
+          id: 'truth-global',
+          description: 'Shared planetary structure',
+          sourceFacts: ['fact-global'],
+          stability: options.truthStability ?? 0.8,
+          curvature: 0.3,
+          createdAt: 10,
+          updatedAt: 10,
+        },
+      },
+      version: 1,
+      updatedAt: 10,
+    },
+    truthSignatures: { 'truth-global': quantumSignature },
+  };
+}
+
+function planetarySynchronization(
+  nodes: Record<string, unknown>[],
+  governance: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    at: 20,
+    nodes,
+    collapsePolicy: 'governed',
+    governance: {
+      mode: 'strict',
+      nodePolicies: {},
+      globalTruthRules: {},
+      collapseRules: {},
+      ...governance,
+    },
+  };
+}
+
+async function planetaryRequest(
+  kernel: PortalKernel,
+  payload: Record<string, unknown>,
+): Promise<Response> {
+  return app.request(
+    '/api/kernel/message',
+    authorized('POST', { type: 'planetary.sync', payload }),
+    makeBindings({ kernel }),
+  );
+}
+
+async function instituteRequest(
+  kernel: PortalKernel,
+  payload: Record<string, unknown>,
+  governanceContext: Record<string, unknown> = {},
+): Promise<Response> {
+  return app.request(
+    '/api/kernel/message',
+    authorized('POST', { type: 'institute.truth.form', payload, governanceContext }),
+    makeBindings({ kernel }),
+  );
+}
+
 describe('kernel result helpers', () => {
   it('resolves all supported umbrella modes', () => {
     expect(['strict', 'advisory', 'off'].map(resolveUmbrellaMode)).toEqual(['strict', 'advisory', 'off']);
@@ -472,10 +592,17 @@ describe('Hono Worker routes', () => {
     ['messages', 'messages'],
     ['logs', 'logs'],
     ['inference', 'inference'],
-    ['quantum/state', 'quantum.state'],
-    ['quantum/branches', 'quantum.branches'],
-    ['quantum/curvature', 'quantum.curvature'],
-    ['quantum/signature', 'quantum.signature'],
+    ['institute/canon', 'institute.canon'],
+    ['institute/truths', 'institute.truths'],
+    ['institute/timeline', 'institute.timeline'],
+    ['institute/stability', 'institute.stability'],
+    ['institute/signature', 'institute.signature'],
+    ['institute/timelines', 'institute.timelines'],
+    ['planetary/identity', 'planetary.identity'],
+    ['planetary/substrate', 'planetary.substrate'],
+    ['planetary/quantum', 'planetary.quantum'],
+    ['planetary/canon', 'planetary.canon'],
+    ['planetary/governance', 'planetary.governance'],
   ])('exposes introspection route %s', async (route, kind) => {
     const response = await app.request(`/api/introspection/${route}`, undefined, makeBindings());
     expect(response.status).toBe(200);
@@ -484,6 +611,296 @@ describe('Hono Worker routes', () => {
       introspection: kind,
       worker: 'planetary-max',
     });
+  });
+});
+
+describe('MAX-Institute truth layer', () => {
+  it('forms stable truths and records an identity-bound epistemic timeline', async () => {
+    const kernel = makeKernel();
+    const response = await instituteRequest(kernel, instituteFormation('truth-1', 10));
+    const body = await response.json<{
+      result: {
+        truth: { id: string; sourceFacts: string[]; stability: number; curvature: number };
+        epistemicEvent: { action: string; meta: { identityId: string } };
+        canonVersion: number;
+      };
+    }>();
+    const state = await kernel.fetch(new Request('https://kernel.test/kernel/institute/state'));
+    const stateBody = await state.json<{
+      result: { canon: { truths: Record<string, unknown>; version: number }; timelines: Record<string, unknown> };
+    }>();
+
+    expect(response.status).toBe(200);
+    expect(body.result.truth).toMatchObject({
+      id: 'truth-1',
+      sourceFacts: ['truth-1-fact'],
+      curvature: 0.383334,
+    });
+    expect(body.result.truth.stability).toBeGreaterThanOrEqual(0.6);
+    expect(body.result.epistemicEvent).toMatchObject({
+      action: 'added',
+      meta: { identityId: 'test-user' },
+    });
+    expect(body.result.canonVersion).toBe(1);
+    expect(stateBody.result.canon.truths).toHaveProperty('truth-1');
+    expect(stateBody.result.timelines).toHaveProperty('test-user');
+  });
+
+  it('rejects patterns that do not persist across simulation ticks without changing canon', async () => {
+    const kernel = makeKernel();
+    const formation = instituteFormation('unstable-truth', 10);
+    formation.simulationDeltas = [{ factId: 'unstable-truth-fact', tick: 1 }];
+    const response = await instituteRequest(kernel, formation);
+    const state = await kernel.fetch(new Request('https://kernel.test/kernel/institute/state'));
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { code: 'UNSTABLE_INSTITUTE_PATTERN' },
+    });
+    expect(await state.json()).toMatchObject({
+      result: { canon: { truths: {}, version: 0 }, timelines: {} },
+    });
+  });
+
+  it('updates canon deterministically while preserving truth creation time', async () => {
+    const kernel = makeKernel();
+    await instituteRequest(kernel, instituteFormation('truth-1', 10));
+    const update = instituteFormation('truth-1', 20);
+    update.description = 'Refined stable structure';
+    const response = await instituteRequest(kernel, update);
+
+    expect(await response.json()).toMatchObject({
+      result: {
+        truth: { description: 'Refined stable structure', createdAt: 10, updatedAt: 20 },
+        epistemicEvent: { id: 'truth-1:2:updated', action: 'updated' },
+        canonVersion: 2,
+      },
+    });
+  });
+
+  it('exposes canon and epistemic timelines through Institute introspection', async () => {
+    const kernel = makeKernel();
+    const bindings = makeBindings({ kernel });
+    await instituteRequest(kernel, instituteFormation('truth-1', 10));
+
+    const canon = await app.request('/api/introspection/institute/canon', undefined, bindings);
+    const timelines = await app.request('/api/introspection/institute/timelines', undefined, bindings);
+
+    expect(await canon.json()).toMatchObject({
+      ok: true,
+      introspection: 'institute.canon',
+      result: { version: 1, truths: { 'truth-1': { id: 'truth-1' } } },
+    });
+    expect(await timelines.json()).toMatchObject({
+      ok: true,
+      introspection: 'institute.timelines',
+      result: [{ identityId: 'test-user', events: [{ truthId: 'truth-1', action: 'added' }] }],
+    });
+  });
+
+  it('does not form a truth when Umbrella governance denies it', async () => {
+    const kernel = makeKernel();
+    const response = await instituteRequest(
+      kernel,
+      instituteFormation('denied-truth', 10),
+      { permissions: { 'institute.truth.form': false } },
+    );
+    const state = await kernel.fetch(new Request('https://kernel.test/kernel/institute/state'));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
+    expect(await state.json()).toMatchObject({ result: { canon: { version: 0, truths: {} } } });
+  });
+
+  it('increments canon only for material truth changes', async () => {
+    const kernel = makeKernel();
+    await instituteRequest(kernel, instituteFormation('truth-1', 10));
+    const unchanged = await instituteRequest(kernel, instituteFormation('truth-1', 20));
+
+    expect(await unchanged.json()).toMatchObject({
+      result: { canonVersion: 1, changed: false, truth: { updatedAt: 10 } },
+    });
+  });
+
+  it('applies strict truth thresholds and records advisory governance metadata', async () => {
+    const strictKernel = makeKernel();
+    const denied = await instituteRequest(
+      strictKernel,
+      instituteFormation('truth-strict', 10),
+      { stabilityThreshold: 0.95 },
+    );
+    const advisoryKernel = makeKernel('advisory');
+    const advisory = await instituteRequest(
+      advisoryKernel,
+      instituteFormation('truth-advisory', 10),
+      { stabilityThreshold: 0.95 },
+    );
+
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ error: { code: 'INSTITUTE_GOVERNANCE_DENIED' } });
+    expect(await advisory.json()).toMatchObject({
+      result: {
+        epistemicEvent: { meta: { governance: { mode: 'advisory', decision: 'advisory' } } },
+      },
+    });
+  });
+
+  it('raises stability when stronger evidence materially updates a truth', async () => {
+    const kernel = makeKernel();
+    const first = await instituteRequest(kernel, instituteFormation('truth-growth', 10, 0.6));
+    const second = await instituteRequest(kernel, instituteFormation('truth-growth', 20, 1));
+    const firstBody = await first.json<{ result: { truth: { stability: number } } }>();
+    const secondBody = await second.json<{ result: { truth: { stability: number }; changed: boolean } }>();
+
+    expect(secondBody.result.changed).toBe(true);
+    expect(secondBody.result.truth.stability).toBeGreaterThan(firstBody.result.truth.stability);
+  });
+
+  it('exposes truth, timeline, stability, and signature Institute views', async () => {
+    const kernel = makeKernel();
+    const bindings = makeBindings({ kernel });
+    await instituteRequest(kernel, instituteFormation('truth-1', 10));
+
+    const truths = await app.request('/api/introspection/institute/truths', undefined, bindings);
+    const timeline = await app.request(
+      '/api/introspection/institute/timeline?identityId=test-user',
+      undefined,
+      bindings,
+    );
+    const stability = await app.request('/api/introspection/institute/stability', undefined, bindings);
+    const signature = await app.request('/api/introspection/institute/signature', undefined, bindings);
+
+    expect(await truths.json()).toMatchObject({ result: [{ id: 'truth-1' }] });
+    expect(await timeline.json()).toMatchObject({ result: { identityId: 'test-user' } });
+    expect(await stability.json()).toMatchObject({ result: { 'truth-1': expect.any(Number) } });
+    expect(await signature.json()).toMatchObject({
+      result: { truths: { 'truth-1': ['quantum-stable'] } },
+    });
+  });
+});
+
+describe('Planetary Mode', () => {
+  it('produces identical global state for identical node snapshots in any order', async () => {
+    const first = makeKernel();
+    const second = makeKernel();
+    const nodeA = planetaryNode('node-a');
+    const nodeB = planetaryNode('node-b');
+    const firstResponse = await planetaryRequest(first, planetarySynchronization([nodeA, nodeB]));
+    const secondResponse = await planetaryRequest(second, planetarySynchronization([nodeB, nodeA]));
+    const firstBody = await firstResponse.json<{ result: { state: unknown } }>();
+    const secondBody = await secondResponse.json<{ result: { state: unknown } }>();
+
+    expect(firstResponse.status).toBe(200);
+    expect(firstBody.result.state).toEqual(secondBody.result.state);
+  });
+
+  it('forms a global canon and synchronized governed quantum collapse', async () => {
+    const response = await planetaryRequest(
+      makeKernel(),
+      planetarySynchronization([planetaryNode('node-a'), planetaryNode('node-b')]),
+    );
+
+    expect(await response.json()).toMatchObject({
+      result: {
+        state: {
+          canon: {
+            truths: { 'truth-global': { stability: 0.8 } },
+            globalStability: 0.8,
+          },
+          quantum: {
+            globalSignature: 'quantum-stable',
+            globalCurvature: 0.3,
+            collapsePolicy: 'governed',
+          },
+          identities: { 'identity-1': { signature: 'identity-stable', curvature: 0.4 } },
+        },
+      },
+    });
+  });
+
+  it('lets strict global truth rules override locally accepted truths', async () => {
+    const response = await planetaryRequest(
+      makeKernel(),
+      planetarySynchronization(
+        [planetaryNode('node-a'), planetaryNode('node-b')],
+        { globalTruthRules: { minStability: 0.95 } },
+      ),
+    );
+
+    expect(await response.json()).toMatchObject({
+      result: { state: { canon: { truths: {}, globalStability: 0 } } },
+    });
+  });
+
+  it('rejects divergent identity signatures in strict mode without persisting state', async () => {
+    const kernel = makeKernel();
+    const response = await planetaryRequest(
+      kernel,
+      planetarySynchronization([
+        planetaryNode('node-a', { identitySignature: 'signature-a' }),
+        planetaryNode('node-b', { identitySignature: 'signature-b' }),
+      ]),
+    );
+    const state = await kernel.fetch(new Request('https://kernel.test/kernel/planetary/state'));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'PLANETARY_GOVERNANCE_DENIED' } });
+    expect(await state.json()).toMatchObject({ result: { synchronizedAt: 0, identities: {} } });
+  });
+
+  it('filters unsafe quantum signatures under strict global governance', async () => {
+    const response = await planetaryRequest(
+      makeKernel(),
+      planetarySynchronization(
+        [
+          planetaryNode('node-a', { quantumSignature: 'unsafe' }),
+          planetaryNode('node-b', { quantumSignature: 'safe' }),
+        ],
+        { collapseRules: { deniedSignatures: ['unsafe'] } },
+      ),
+    );
+
+    expect(await response.json()).toMatchObject({
+      result: { state: { quantum: { globalSignature: 'safe', branches: [{ signature: 'safe' }] } } },
+    });
+  });
+
+  it('allows identity divergence in advisory mode and records an explanation', async () => {
+    const response = await planetaryRequest(
+      makeKernel(),
+      planetarySynchronization(
+        [
+          planetaryNode('node-a', { identitySignature: 'signature-a' }),
+          planetaryNode('node-b', { identitySignature: 'signature-b' }),
+        ],
+        { mode: 'advisory' },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      result: { state: { advisories: ['identity:identity-1:replica-divergence'] } },
+    });
+  });
+
+  it('exposes every planetary introspection surface', async () => {
+    const kernel = makeKernel();
+    const bindings = makeBindings({ kernel });
+    await planetaryRequest(
+      kernel,
+      planetarySynchronization([planetaryNode('node-a'), planetaryNode('node-b')]),
+    );
+    const paths = ['identity', 'substrate', 'quantum', 'canon', 'governance'];
+    for (const path of paths) {
+      const response = await app.request(`/api/introspection/planetary/${path}`, undefined, bindings);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        introspection: `planetary.${path}`,
+        worker: 'planetary-max',
+      });
+    }
   });
 });
 

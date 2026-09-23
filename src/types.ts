@@ -233,3 +233,157 @@ export type SimTecTaskState = Readonly<{
   status: "created" | "completed";
   tickVersion: number;
 }>;
+
+export type InstituteTruth = Readonly<{
+  id: string;
+  description: string;
+  sourceFacts: ReadonlyArray<string>;
+  stability: number;
+  curvature: number;
+  createdAt: number;
+  updatedAt: number;
+}>;
+
+export type InstituteCanon = Readonly<{
+  truths: Readonly<Record<string, InstituteTruth>>;
+  version: number;
+  updatedAt: number;
+}>;
+
+export type EpistemicEventAction = "added" | "updated" | "deprecated";
+
+export type EpistemicEvent = Readonly<{
+  id: string;
+  truthId: string;
+  action: EpistemicEventAction;
+  at: number;
+  meta: Readonly<Record<string, unknown>>;
+}>;
+
+export type EpistemicTimeline = Readonly<{
+  identityId: string;
+  events: ReadonlyArray<EpistemicEvent>;
+}>;
+
+export type InstituteState = Readonly<{
+  canon: InstituteCanon;
+  timelines: Readonly<Record<string, EpistemicTimeline>>;
+}>;
+
+export type InstituteInferenceFact = Readonly<{
+  id: string;
+  description: string;
+  confidence: number;
+}>;
+
+export type InstituteInferenceHypothesis = Readonly<{
+  id: string;
+  factIds: ReadonlyArray<string>;
+  confidence: number;
+  curvatureGuidance?: number;
+  collapsePolicySuggestion?: PlanetaryQuantumState["collapsePolicy"];
+}>;
+
+export type InstituteQuantumBranch = Readonly<{
+  factId: string;
+  probability: number;
+  curvature: number;
+  signature?: string;
+}>;
+
+export type InstituteSimulationDelta = Readonly<{
+  factId: string;
+  tick: number;
+}>;
+
+export type InstituteTruthFormation = Readonly<{
+  id: string;
+  description: string;
+  identityId: string;
+  facts: ReadonlyArray<InstituteInferenceFact>;
+  hypotheses: ReadonlyArray<InstituteInferenceHypothesis>;
+  quantumBranches: ReadonlyArray<InstituteQuantumBranch>;
+  simulationDeltas: ReadonlyArray<InstituteSimulationDelta>;
+  at: number;
+}>;
+
+export type PlanetaryIdentity = Readonly<{
+  id: string;
+  originNode: string;
+  timeline: EpistemicTimeline;
+  curvature: number;
+  signature: string;
+}>;
+
+export type PlanetaryAnomaly = Readonly<{
+  id: string;
+  node: string;
+  magnitude: number;
+  signature: string;
+  at: number;
+}>;
+
+export type PlanetarySubstrate = Readonly<{
+  id: string;
+  nodes: ReadonlyArray<string>;
+  topology: Readonly<Record<string, unknown>>;
+  stability: number;
+  anomalies: ReadonlyArray<PlanetaryAnomaly>;
+}>;
+
+export type PlanetaryGovernanceContext = Readonly<{
+  mode: UmbrellaMode;
+  nodePolicies: Readonly<Record<string, unknown>>;
+  globalTruthRules: Readonly<Record<string, unknown>>;
+  collapseRules: Readonly<Record<string, unknown>>;
+}>;
+
+export type QuantumBranch = Readonly<{
+  id: string;
+  node: string;
+  probability: number;
+  curvature: number;
+  signature: string;
+}>;
+
+export type PlanetaryQuantumState = Readonly<{
+  branches: ReadonlyArray<QuantumBranch>;
+  globalCurvature: number;
+  globalSignature: string;
+  collapsePolicy: "deterministic" | "probabilistic" | "governed";
+}>;
+
+export type PlanetaryCanon = Readonly<{
+  truths: Readonly<Record<string, InstituteTruth>>;
+  version: number;
+  updatedAt: number;
+  globalStability: number;
+}>;
+
+export type PlanetaryNodeSnapshot = Readonly<{
+  nodeId: string;
+  identities: ReadonlyArray<PlanetaryIdentity>;
+  substrates: ReadonlyArray<PlanetarySubstrate>;
+  quantumBranches: ReadonlyArray<QuantumBranch>;
+  canon: InstituteCanon;
+  truthSignatures: Readonly<Record<string, string>>;
+}>;
+
+export type PlanetarySynchronization = Readonly<{
+  at: number;
+  coordinatorIdentity: string;
+  nodes: ReadonlyArray<PlanetaryNodeSnapshot>;
+  governance: PlanetaryGovernanceContext;
+  collapsePolicy: PlanetaryQuantumState["collapsePolicy"];
+}>;
+
+export type PlanetaryState = Readonly<{
+  identities: Readonly<Record<string, PlanetaryIdentity>>;
+  substrates: Readonly<Record<string, PlanetarySubstrate>>;
+  quantum: PlanetaryQuantumState;
+  canon: PlanetaryCanon;
+  governance: PlanetaryGovernanceContext;
+  coordinatorIdentity: string;
+  synchronizedAt: number;
+  advisories: ReadonlyArray<string>;
+}>;

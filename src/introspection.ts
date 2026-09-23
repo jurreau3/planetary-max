@@ -1,6 +1,9 @@
 import type { Context, Hono } from "hono";
 import type {
   Bindings,
+  EpistemicTimeline,
+  InstituteState,
+  PlanetaryState,
   PortalKernelState,
   QuantumOverlay,
   SimEvent,
@@ -23,10 +26,17 @@ export type IntrospectionKind =
   | "messages"
   | "logs"
   | "inference"
-  | "quantum.state"
-  | "quantum.branches"
-  | "quantum.curvature"
-  | "quantum.signature";
+  | "institute.canon"
+  | "institute.truths"
+  | "institute.timeline"
+  | "institute.stability"
+  | "institute.signature"
+  | "institute.timelines"
+  | "planetary.identity"
+  | "planetary.substrate"
+  | "planetary.quantum"
+  | "planetary.canon"
+  | "planetary.governance";
 
 type SimulationIntrospectionState = PortalKernelState & Readonly<{
   eventLog: ReadonlyArray<SimEvent>;
@@ -37,25 +47,27 @@ type SimulationIntrospectionState = PortalKernelState & Readonly<{
 
 const KERNEL_OBJECT_NAME = "portal-kernel";
 const SIMULATION_STATE_URL = "https://portal-kernel.invalid/kernel/sim/state";
+const INSTITUTE_STATE_URL = "https://portal-kernel.invalid/kernel/institute/state";
+const PLANETARY_STATE_URL = "https://portal-kernel.invalid/kernel/planetary/state";
 
-const INTROSPECTION_ROUTES: ReadonlyArray<readonly [string, IntrospectionKind]> = [
-  ["/api/introspection/sim/behavior", "sim.behavior"],
-  ["/api/introspection/identity/timeline", "identity.timeline"],
-  ["/api/introspection/windows/focus", "windows.focus"],
-  ["/api/introspection/windows/state", "windows.state"],
-  ["/api/introspection/windows/timeline", "windows.timeline"],
-  ["/api/introspection/umbrella/enforcement", "umbrella.enforcement"],
-  ["/api/introspection/kernel/heatmap", "kernel.heatmap"],
-  ["/api/introspection/tec/pipeline", "tec.pipeline"],
-  ["/api/introspection/substrate/state", "substrate.state"],
-  ["/api/introspection/messages", "messages"],
-  ["/api/introspection/logs", "logs"],
-  ["/api/introspection/inference", "inference"],
-  ["/api/introspection/quantum/state", "quantum.state"],
-  ["/api/introspection/quantum/branches", "quantum.branches"],
-  ["/api/introspection/quantum/curvature", "quantum.curvature"],
-  ["/api/introspection/quantum/signature", "quantum.signature"],
-];
+const INSTITUTE_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> =
+  new Set<IntrospectionKind>([
+    "institute.canon",
+    "institute.truths",
+    "institute.timeline",
+    "institute.stability",
+    "institute.signature",
+    "institute.timelines",
+  ]);
+
+const PLANETARY_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> =
+  new Set<IntrospectionKind>([
+    "planetary.identity",
+    "planetary.substrate",
+    "planetary.quantum",
+    "planetary.canon",
+    "planetary.governance",
+  ]);
 
 const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<IntrospectionKind>([
   "sim.behavior",
@@ -77,17 +89,78 @@ const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<I
 export function attachIntrospectionRoutes(
   app: Hono<{ Bindings: Bindings }>,
 ): void {
-  for (const [path, kind] of INTROSPECTION_ROUTES) {
-    app.get(path, (context: Context<{ Bindings: Bindings }>): Promise<Response> =>
-      handleIntrospection(context, kind),
-    );
-  }
+  app.get("/api/introspection/sim/behavior", introspectionHandler("sim.behavior"));
+  app.get("/api/introspection/identity/timeline", introspectionHandler("identity.timeline"));
+  app.get("/api/introspection/windows/focus", introspectionHandler("windows.focus"));
+  app.get("/api/introspection/windows/state", introspectionHandler("windows.state"));
+  app.get("/api/introspection/windows/timeline", introspectionHandler("windows.timeline"));
+  app.get("/api/introspection/umbrella/enforcement", introspectionHandler("umbrella.enforcement"));
+  app.get("/api/introspection/kernel/heatmap", introspectionHandler("kernel.heatmap"));
+  app.get("/api/introspection/tec/pipeline", introspectionHandler("tec.pipeline"));
+  app.get("/api/introspection/substrate/state", introspectionHandler("substrate.state"));
+  app.get("/api/introspection/messages", introspectionHandler("messages"));
+  app.get("/api/introspection/logs", introspectionHandler("logs"));
+  app.get("/api/introspection/inference", introspectionHandler("inference"));
+  app.get("/api/introspection/institute/canon", introspectionHandler("institute.canon"));
+  app.get("/api/introspection/institute/truths", introspectionHandler("institute.truths"));
+  app.get("/api/introspection/institute/timeline", introspectionHandler("institute.timeline"));
+  app.get("/api/introspection/institute/stability", introspectionHandler("institute.stability"));
+  app.get("/api/introspection/institute/signature", introspectionHandler("institute.signature"));
+  app.get("/api/introspection/institute/timelines", introspectionHandler("institute.timelines"));
+  app.get("/api/introspection/planetary/identity", introspectionHandler("planetary.identity"));
+  app.get("/api/introspection/planetary/substrate", introspectionHandler("planetary.substrate"));
+  app.get("/api/introspection/planetary/quantum", introspectionHandler("planetary.quantum"));
+  app.get("/api/introspection/planetary/canon", introspectionHandler("planetary.canon"));
+  app.get("/api/introspection/planetary/governance", introspectionHandler("planetary.governance"));
+}
+
+function introspectionHandler(
+  kind: IntrospectionKind,
+): (context: Context<{ Bindings: Bindings }>) => Promise<Response> {
+  return (context: Context<{ Bindings: Bindings }>): Promise<Response> =>
+    handleIntrospection(context, kind);
 }
 
 async function handleIntrospection(
   context: Context<{ Bindings: Bindings }>,
   kind: IntrospectionKind,
 ): Promise<Response> {
+  if (PLANETARY_INTROSPECTION_KINDS.has(kind)) {
+    const state: PlanetaryState | Response = await readPlanetaryState(context.env);
+    if (state instanceof Response) return state;
+    return context.json({
+      ok: true,
+      introspection: kind,
+      worker: "planetary-max",
+      result: planetaryIntrospectionResult(kind, state),
+    });
+  }
+  if (INSTITUTE_INTROSPECTION_KINDS.has(kind)) {
+    const state: InstituteState | Response = await readInstituteState(context.env);
+    if (state instanceof Response) return state;
+    if (kind === "institute.signature") {
+      const planetary: PlanetaryState | Response = await readPlanetaryState(context.env);
+      if (planetary instanceof Response) return planetary;
+      return context.json({
+        ok: true,
+        introspection: kind,
+        worker: "planetary-max",
+        result: {
+          truths: instituteSignatureOverlays(state),
+          planetary: {
+            globalSignature: planetary.quantum.globalSignature,
+            branches: planetary.quantum.branches,
+          },
+        },
+      });
+    }
+    return context.json({
+      ok: true,
+      introspection: kind,
+      worker: "planetary-max",
+      result: instituteIntrospectionResult(kind, state, context.req.query("identityId")),
+    });
+  }
   if (!SIMULATION_INTROSPECTION_KINDS.has(kind)) {
     return context.json({ ok: true, introspection: kind, worker: "planetary-max" });
   }
@@ -100,6 +173,83 @@ async function handleIntrospection(
     worker: "planetary-max",
     result: introspectionResult(kind, state),
   });
+}
+
+function instituteIntrospectionResult(
+  kind: IntrospectionKind,
+  state: InstituteState,
+  identityId: string | undefined,
+): unknown {
+  if (kind === "institute.canon") return state.canon;
+  if (kind === "institute.truths") {
+    return Object.values(state.canon.truths).sort((left, right): number => compareOrdinal(left.id, right.id));
+  }
+  if (kind === "institute.timeline") {
+    return identityId === undefined ? null : state.timelines[identityId] ?? null;
+  }
+  if (kind === "institute.stability") {
+    return Object.fromEntries(Object.values(state.canon.truths)
+      .sort((left, right): number => compareOrdinal(left.id, right.id))
+      .map((truth): readonly [string, number] => [truth.id, truth.stability]));
+  }
+  return Object.values(state.timelines).sort(compareTimelines);
+}
+
+function planetaryIntrospectionResult(kind: IntrospectionKind, state: PlanetaryState): unknown {
+  if (kind === "planetary.identity") return state.identities;
+  if (kind === "planetary.substrate") return state.substrates;
+  if (kind === "planetary.quantum") return state.quantum;
+  if (kind === "planetary.canon") return state.canon;
+  return { ...state.governance, advisories: state.advisories };
+}
+
+function instituteSignatureOverlays(
+  state: InstituteState,
+): Readonly<Record<string, ReadonlyArray<string>>> {
+  const signatures: Record<string, string[]> = {};
+  const events: EpistemicTimeline["events"] = Object.values(state.timelines)
+    .flatMap((timeline: EpistemicTimeline): EpistemicTimeline["events"] => timeline.events)
+    .sort((left, right): number => left.at - right.at || compareOrdinal(left.id, right.id));
+  for (const event of events) {
+    const overlays: unknown = event.meta.signatureOverlays;
+    if (!Array.isArray(overlays)) continue;
+    signatures[event.truthId] = [...new Set<string>(overlays.filter(
+      (value: unknown): value is string => typeof value === "string" && value.length > 0,
+    ))].sort(compareOrdinal);
+  }
+  return signatures;
+}
+
+async function readInstituteState(env: Bindings): Promise<InstituteState | Response> {
+  try {
+    const id: DurableObjectId = env.PORTAL_KERNEL.idFromName(KERNEL_OBJECT_NAME);
+    const response: Response = await env.PORTAL_KERNEL.get(id).fetch(
+      new Request(INSTITUTE_STATE_URL, { method: "GET" }),
+    );
+    const value: unknown = await response.json();
+    if (!response.ok || !isRecord(value) || value.ok !== true || !isInstituteState(value.result)) {
+      return introspectionFailure("PortalKernel returned an invalid Institute snapshot");
+    }
+    return value.result;
+  } catch {
+    return introspectionFailure("PortalKernel Institute snapshot is unavailable");
+  }
+}
+
+async function readPlanetaryState(env: Bindings): Promise<PlanetaryState | Response> {
+  try {
+    const id: DurableObjectId = env.PORTAL_KERNEL.idFromName(KERNEL_OBJECT_NAME);
+    const response: Response = await env.PORTAL_KERNEL.get(id).fetch(
+      new Request(PLANETARY_STATE_URL, { method: "GET" }),
+    );
+    const value: unknown = await response.json();
+    if (!response.ok || !isRecord(value) || value.ok !== true || !isPlanetaryState(value.result)) {
+      return introspectionFailure("PortalKernel returned an invalid planetary snapshot");
+    }
+    return value.result;
+  } catch {
+    return introspectionFailure("PortalKernel planetary snapshot is unavailable");
+  }
 }
 
 async function readSimulationState(
@@ -215,6 +365,17 @@ function compareOrdinal(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+function compareTimelines(left: EpistemicTimeline, right: EpistemicTimeline): number {
+  return compareOrdinal(left.identityId, right.identityId);
+}
+
+function introspectionFailure(message: string): Response {
+  return Response.json(
+    { ok: false, error: { code: "INTROSPECTION_FAILED", message } },
+    { status: 503 },
+  );
+}
+
 function isSimulationState(value: unknown): value is SimulationIntrospectionState {
   return (
     isRecord(value) &&
@@ -228,6 +389,23 @@ function isSimulationState(value: unknown): value is SimulationIntrospectionStat
     isRecord(value.tecTasks) &&
     isRecord(value.quantum)
   );
+}
+
+function isInstituteState(value: unknown): value is InstituteState {
+  return (
+    isRecord(value) &&
+    isRecord(value.canon) &&
+    isRecord(value.canon.truths) &&
+    typeof value.canon.version === "number" &&
+    typeof value.canon.updatedAt === "number" &&
+    isRecord(value.timelines)
+  );
+}
+
+function isPlanetaryState(value: unknown): value is PlanetaryState {
+  return isRecord(value) && isRecord(value.identities) && isRecord(value.substrates) &&
+    isRecord(value.quantum) && isRecord(value.canon) && isRecord(value.governance) &&
+    typeof value.synchronizedAt === "number" && Array.isArray(value.advisories);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

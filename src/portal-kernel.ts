@@ -1,11 +1,12 @@
 import type {
+  EpistemicTimeline,
   GovernanceMetadata,
+  InstituteState,
   KernelEnvelope,
   KernelEnvironment,
   KernelLane,
   PortalKernelState,
-  QuantumCollapsePolicy,
-  QuantumOverlay,
+  PlanetaryState,
   SimAgentState,
   SimDiffEntry,
   SimEvent,
@@ -16,8 +17,22 @@ import type {
   SimWindowState,
   UmbrellaMode,
 } from "./types";
-import { governanceInferenceFromContext, runInference } from "./inference";
-import { generateQuantumOverlay, quantumGovernanceFromContext } from "./quantumn";
+import {
+  formInstituteTruth,
+  initialInstituteState,
+  isInstituteFormationFailure,
+  parseTruthFormation,
+  type InstituteFormationFailure,
+  type InstituteFormationResult,
+  type InstituteTruthGovernance,
+} from "./institute";
+import {
+  initialPlanetaryState,
+  isPlanetaryFailure,
+  parsePlanetarySynchronization,
+  synchronizePlanetaryState,
+  type PlanetaryFailure,
+} from "./planetary";
 
 type UniverseState = Readonly<{
   tick: number;
@@ -88,7 +103,8 @@ const SIMULATION_STATE_KEY = "simulation";
 const SIMULATION_EVENT_LOG_KEY = "simulation-event-log";
 const SIMULATION_DIFF_LOG_KEY = "simulation-diff-log";
 const SIMULATION_TEC_TASKS_KEY = "simulation-tec-tasks";
-const QUANTUM_STATE_KEY = "quantum-state";
+const INSTITUTE_STATE_KEY = "institute";
+const PLANETARY_STATE_KEY = "planetary";
 const INTROSPECTION_PREFIX = "introspection.";
 const MAX_QUEUED_EVENTS = 1_000;
 const MAX_EVENT_LOG_ENTRIES = 200;
@@ -148,6 +164,16 @@ export class PortalKernel {
       return request.method === "POST"
         ? this.simulationTickResponse(request)
         : failureResponse("METHOD_NOT_ALLOWED", "Simulation ticks require POST", 405);
+    }
+    if (url.pathname === "/kernel/institute/state") {
+      return request.method === "GET"
+        ? this.instituteStateResponse()
+        : failureResponse("METHOD_NOT_ALLOWED", "Institute state requires GET", 405);
+    }
+    if (url.pathname === "/kernel/planetary/state") {
+      return request.method === "GET"
+        ? this.planetaryStateResponse()
+        : failureResponse("METHOD_NOT_ALLOWED", "Planetary state requires GET", 405);
     }
     if (url.pathname !== "/api/kernel/message") {
       return Response.json({ status: "ok", service: "portal-kernel" });
@@ -268,6 +294,28 @@ export class PortalKernel {
       };
     }
 
+    if (envelope.type === "institute.truth.form") {
+      return this.formInstituteTruth(envelope, governance);
+    }
+    if (envelope.type === "institute.canon.state") {
+      const state: InstituteState = await this.readInstituteState();
+      return { data: { canon: state.canon } };
+    }
+    if (envelope.type === "institute.timeline.state") {
+      const state: InstituteState = await this.readInstituteState();
+      const timeline: EpistemicTimeline = state.timelines[envelope.identity] ?? {
+        identityId: envelope.identity,
+        events: [],
+      };
+      return { data: { timeline } };
+    }
+    if (envelope.type === "planetary.sync") {
+      return this.synchronizePlanetary(envelope);
+    }
+    if (envelope.type === "planetary.state") {
+      return { data: { state: await this.readPlanetaryState() } };
+    }
+
     if (envelope.type.startsWith(INTROSPECTION_PREFIX)) {
       return { data: this.introspectionSnapshot(envelope, governance) };
     }
@@ -371,6 +419,86 @@ export class PortalKernel {
         },
       },
     });
+  }
+
+  private async instituteStateResponse(): Promise<Response> {
+    return Response.json({ ok: true, result: await this.readInstituteState() });
+  }
+
+  private async planetaryStateResponse(): Promise<Response> {
+    return Response.json({ ok: true, result: await this.readPlanetaryState() });
+  }
+
+  private async synchronizePlanetary(envelope: KernelEnvelope): Promise<DispatchOutput | Response> {
+    const synchronization = parsePlanetarySynchronization(envelope.payload, envelope.identity);
+    if (isPlanetaryFailure(synchronization)) {
+      return failureResponse(synchronization.code, synchronization.message, 400);
+    }
+    const result: PlanetaryState | PlanetaryFailure = synchronizePlanetaryState(synchronization);
+    if (isPlanetaryFailure(result)) {
+      return failureResponse(result.code, result.message, 403);
+    }
+    if (jsonSize(result) > MAX_STORAGE_VALUE_BYTES) {
+      return failureResponse("PLANETARY_STATE_LIMIT", "Planetary state exceeds the durable storage limit", 413);
+    }
+    await this.state.storage.put(PLANETARY_STATE_KEY, result);
+    return { data: { state: result } };
+  }
+
+  private async formInstituteTruth(
+    envelope: KernelEnvelope,
+    governance: GovernanceMetadata,
+  ): Promise<DispatchOutput | Response> {
+    if (
+      envelope.governanceContext.stabilityThreshold !== undefined &&
+      !finiteNumber(envelope.governanceContext.stabilityThreshold)
+    ) {
+      return failureResponse("INVALID_INSTITUTE_EVIDENCE", "stabilityThreshold must be numeric", 400);
+    }
+    if (
+      envelope.governanceContext.curvatureLimit !== undefined &&
+      !finiteNumber(envelope.governanceContext.curvatureLimit)
+    ) {
+      return failureResponse("INVALID_INSTITUTE_EVIDENCE", "curvatureLimit must be numeric", 400);
+    }
+    const formation = parseTruthFormation(envelope.payload, envelope.identity);
+    if ("code" in formation) {
+      return failureResponse(formation.code, formation.message, 400);
+    }
+    return this.state.storage.transaction(
+      async (transaction: DurableObjectTransaction): Promise<DispatchOutput | Response> => {
+        const current: InstituteState =
+          (await transaction.get<InstituteState>(INSTITUTE_STATE_KEY)) ?? initialInstituteState();
+        const truthGovernance: InstituteTruthGovernance = {
+          mode: governance.mode,
+          ...(finiteNumber(envelope.governanceContext.stabilityThreshold)
+            ? { stabilityThreshold: envelope.governanceContext.stabilityThreshold }
+            : {}),
+          ...(finiteNumber(envelope.governanceContext.curvatureLimit)
+            ? { curvatureLimit: envelope.governanceContext.curvatureLimit }
+            : {}),
+        };
+        const result: InstituteFormationResult | InstituteFormationFailure =
+          formInstituteTruth(current, formation, truthGovernance);
+        if (isInstituteFormationFailure(result)) {
+          const status: number = result.code === "INSTITUTE_GOVERNANCE_DENIED"
+            ? 403
+            : result.code === "UNSTABLE_INSTITUTE_PATTERN"
+              ? 422
+              : 400;
+          return failureResponse(result.code, result.message, status);
+        }
+        await transaction.put(INSTITUTE_STATE_KEY, result.state);
+        return {
+          data: {
+            truth: result.truth,
+            ...(result.event === undefined ? {} : { epistemicEvent: result.event }),
+            canonVersion: result.state.canon.version,
+            changed: result.changed,
+          },
+        };
+      },
+    );
   }
 
   private async enqueueSimulationEvent(
@@ -578,6 +706,14 @@ export class PortalKernel {
 
   private async readUniverse(): Promise<UniverseState> {
     return (await this.state.storage.get<UniverseState>(UNIVERSE_STATE_KEY)) ?? initialUniverse();
+  }
+
+  private async readInstituteState(): Promise<InstituteState> {
+    return (await this.state.storage.get<InstituteState>(INSTITUTE_STATE_KEY)) ?? initialInstituteState();
+  }
+
+  private async readPlanetaryState(): Promise<PlanetaryState> {
+    return (await this.state.storage.get<PlanetaryState>(PLANETARY_STATE_KEY)) ?? initialPlanetaryState();
   }
 
   private async tickUniverse(envelope: KernelEnvelope): Promise<UniverseState> {
@@ -1213,6 +1349,8 @@ function laneForType(type: string): string {
   if (type === "umbrella.os" || type.startsWith("os.")) return "umbrella.os";
   if (type.startsWith("umbrella.") || type.includes("license")) return "umbrella";
   if (type.startsWith("universe.")) return "universe";
+  if (type.startsWith("institute.")) return "institute";
+  if (type.startsWith("planetary.")) return "planetary";
   return "kernel";
 }
 
@@ -1232,6 +1370,8 @@ function umbrellaUpdateName(type: string): string {
   if (type === "umbrella.os" || type.startsWith("os.")) return "os-update";
   if (type.startsWith("umbrella.") || type.includes("license")) return "sim-update";
   if (type.startsWith("sim.")) return "simulation";
+  if (type.startsWith("institute.")) return "institute";
+  if (type.startsWith("planetary.")) return "planetary";
   return "kernel";
 }
 
