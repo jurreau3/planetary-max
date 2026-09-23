@@ -249,7 +249,6 @@ export {
   extractQuantumFacts,
   extractSimulationFacts,
   generateInferenceRecommendations,
-  runInference,
 } from "./inference";
 export {
   formInstituteTruth,
@@ -273,6 +272,7 @@ export {
   generateQuantumOverlay,
   normalizeProbabilities,
   quantumGovernanceFromContext,
+  runInference,
 } from "./quantumn";
 export { PortalKernel } from "./portal-kernel";
 export type {

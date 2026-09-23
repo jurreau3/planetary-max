@@ -12,6 +12,9 @@ import type {
   UmbrellaMode,
 } from "./types";
 
+export { runInference } from "./inference";
+export type { QuantumCollapsePolicy, QuantumOverlay };
+
 export type QuantumSimulationInput = PortalKernelState & Readonly<{
   eventLog: ReadonlyArray<SimEvent>;
   tecTasks: Readonly<Record<string, SimTecTaskState>>;
@@ -27,6 +30,8 @@ export type QuantumGenerationInput = Readonly<{
 }>;
 
 const BRANCH_NAMES: ReadonlyArray<string> = ["classical", "expansion", "convergence"];
+
+export const QUANTUM_STATE_KEY = "quantum-state";
 
 export function generateQuantumOverlay(input: QuantumGenerationInput): QuantumOverlay {
   const governance: QuantumGovernanceContext | undefined = input.governanceMode === "off" ||

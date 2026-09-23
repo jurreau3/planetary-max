@@ -7,8 +7,6 @@ import type {
   KernelLane,
   PortalKernelState,
   PlanetaryState,
-  QuantumCollapsePolicy,
-  QuantumOverlay,
   SimAgentState,
   SimDiffEntry,
   SimEvent,
@@ -19,7 +17,7 @@ import type {
   SimWindowState,
   UmbrellaMode,
 } from "./types";
-import { governanceInferenceFromContext, runInference } from "./inference";
+import { governanceInferenceFromContext } from "./inference";
 import {
   formInstituteTruth,
   initialInstituteState,
@@ -36,7 +34,14 @@ import {
   synchronizePlanetaryState,
   type PlanetaryFailure,
 } from "./planetary";
-import { generateQuantumOverlay, quantumGovernanceFromContext } from "./quantumn";
+import {
+  generateQuantumOverlay,
+  QUANTUM_STATE_KEY,
+  quantumGovernanceFromContext,
+  runInference,
+  type QuantumCollapsePolicy,
+  type QuantumOverlay,
+} from "./quantumn";
 
 type UniverseState = Readonly<{
   tick: number;
@@ -107,7 +112,6 @@ const SIMULATION_STATE_KEY = "simulation";
 const SIMULATION_EVENT_LOG_KEY = "simulation-event-log";
 const SIMULATION_DIFF_LOG_KEY = "simulation-diff-log";
 const SIMULATION_TEC_TASKS_KEY = "simulation-tec-tasks";
-const QUANTUM_STATE_KEY = "quantum-state";
 const INSTITUTE_STATE_KEY = "institute";
 const PLANETARY_STATE_KEY = "planetary";
 const INTROSPECTION_PREFIX = "introspection.";
