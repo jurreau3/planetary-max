@@ -3,11 +3,12 @@ main = "dist/index.js"
 compatibility_date = "2024-09-01"
 
 # -----------------------------------------------------
-# Durable Object: PortalKernel
+# Durable Object bindings
 # -----------------------------------------------------
 [durable_objects]
 bindings = [
-  { name = "PORTAL_KERNEL", class_name = "PortalKernel" }
+  { name = "PORTAL_KERNEL", class_name = "PortalKernel" },
+  { name = "new_sqlite_classes", class_name = "new_sqlite_classes" }
 ]
 
 # -----------------------------------------------------
@@ -37,8 +38,8 @@ bindings = [
 ]
 
 # -----------------------------------------------------
-# REQUIRED MIGRATION (Fixes your deploy error)
+# REQUIRED MIGRATION
 # -----------------------------------------------------
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["PortalKernel"]
+new_sqlite_classes = ["PortalKernel", "new_sqlite_classes"]

@@ -6,7 +6,6 @@ import { callKernel } from './kernel-bridge';
 import { beeSimEnvelope } from './planetary';
 import { governanceEnvelope, umbrellaMode } from './governance';
 import { windowsEnvelope } from './types';
-import PortalKernel from './portal-kernel';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -41,5 +40,7 @@ function isLane(value: unknown): value is KernelLane { return value === 'identit
 function bearer(value: string | undefined): string | undefined { return value?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim(); }
 function error(status: number, code: string, message: string): Response { return Response.json({ ok: false, error: { code, message } }, { status }); }
 
-export { app, PortalKernel };
+export { app };
+export { PortalKernel } from './do/PortalKernel';
+export { new_sqlite_classes } from './do/new_sqlite_classes';
 export default app;
