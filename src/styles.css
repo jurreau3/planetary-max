@@ -1,0 +1,27 @@
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #0b1020;
+  color: #e8eefc;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+#root {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+section {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #293655;
+  border-radius: 8px;
+  background: #121a2d;
+}
+
+pre {
+  min-height: 2rem;
+  overflow: auto;
+  color: #a9f0c5;
+}

@@ -17,6 +17,25 @@ app.get('/umbrella/mode', (c) => c.json({ ok: true, mode: umbrellaMode(c.env.UMB
 app.get('/sim', (c) => c.json(beeSimEnvelope()));
 app.get('/windows', (c) => c.json(windowsEnvelope()));
 
+app.get('/api/kernel/status', (c) => c.json({
+  ok: true,
+  service: 'PortalKernel',
+  phase: c.env.PORTAL_OS_PHASE ?? '11',
+  lane: 'kernel',
+  lanes: ['identity', 'windows', 'sim', 'umbrella'],
+}));
+app.get('/api/state', (c) => c.json({
+  ok: true,
+  service: 'MAXOS_STATE',
+  configured: Boolean(c.env.MAXOS_STATE),
+}));
+app.get('/api/umbrella/status', (c) => c.json({
+  ok: true,
+  service: 'Umbrella Enforcement',
+  mode: umbrellaMode(c.env.UMBRELLA_ENFORCEMENT),
+  governance: governanceEnvelope(umbrellaMode(c.env.UMBRELLA_ENFORCEMENT)),
+}));
+
 app.get('/kernel', (c) => c.json({ ok: true, lane: 'kernel', lanes: ['identity', 'windows', 'sim', 'umbrella'] }));
 app.post('/kernel', async (c) => dispatchRequest(c));
 app.post('/api/kernel/message', async (c) => dispatchRequest(c));
