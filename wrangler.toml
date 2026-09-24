@@ -17,4 +17,4 @@ bindings = [
 
 [[kv_namespaces]]
 binding = "MAXOS_STATE"
-id = "<KV_NAMESPACE_ID>"
+id = "d2f70f669d0a4a499e7262a7cc2a56d2"
