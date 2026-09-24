@@ -15,10 +15,10 @@ jobs:
         with:
           node-version: 20
 
-      - name: Clean install
+      - name: Clean install (ignore peer deps)
         run: |
           rm -rf node_modules package-lock.json
-          npm install
+          npm install --legacy-peer-deps
 
       - name: Commit updated lockfile
         run: |
