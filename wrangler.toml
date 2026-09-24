@@ -1,5 +1,5 @@
 name = "planetary-max"
-main = "dist/index.js"
+main = "src/index.ts"
 compatibility_date = "2024-09-01"
 
 # -----------------------------------------------------
@@ -30,15 +30,7 @@ IDENTITY_JWT_AUDIENCE = "planetary-max"
 MAX_OS_VERSION = "1"
 
 # -----------------------------------------------------
-# Worker Bindings
-# -----------------------------------------------------
-[worker]
-bindings = [
-  { name = "MAX_OS_1", type = "worker", worker = "max-os-1" }
-]
-
-# -----------------------------------------------------
-# REQUIRED MIGRATION
+# Durable Object migration
 # -----------------------------------------------------
 [[migrations]]
 tag = "v1"
