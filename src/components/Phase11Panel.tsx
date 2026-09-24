@@ -9,7 +9,7 @@ export function Phase11Panel() {
   }, []);
 
   return (
-    <section>
+    <section className="panel">
       <h2>Phase‑11</h2>
       <pre>{JSON.stringify(phase, null, 2)}</pre>
     </section>

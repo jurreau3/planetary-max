@@ -9,7 +9,7 @@ export function StatePanel() {
   }, []);
 
   return (
-    <section>
+    <section className="panel">
       <h2>MAXOS_STATE</h2>
       <pre>{JSON.stringify(state, null, 2)}</pre>
     </section>

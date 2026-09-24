@@ -9,7 +9,7 @@ export function PlanetaryModePanel() {
   }, []);
 
   return (
-    <section>
+    <section className="panel">
       <h2>Planetary Mode</h2>
       <pre>{JSON.stringify(mode, null, 2)}</pre>
     </section>

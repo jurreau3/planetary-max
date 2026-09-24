@@ -9,7 +9,7 @@ export function UmbrellaPanel() {
   }, []);
 
   return (
-    <section>
+    <section className="panel">
       <h2>Umbrella Enforcement</h2>
       <pre>{JSON.stringify(umbrella, null, 2)}</pre>
     </section>

@@ -9,7 +9,7 @@ export function MaxOSVersionPanel() {
   }, []);
 
   return (
-    <section>
+    <section className="panel">
       <h2>MAX‑OS‑1 Version</h2>
       <pre>{JSON.stringify(version, null, 2)}</pre>
     </section>

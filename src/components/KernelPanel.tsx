@@ -9,7 +9,7 @@ export function KernelPanel() {
   }, []);
 
   return (
-    <section>
+    <section className="panel">
       <h2>PortalKernel</h2>
       <pre>{JSON.stringify(kernel, null, 2)}</pre>
     </section>
