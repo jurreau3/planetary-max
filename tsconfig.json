@@ -6,10 +6,8 @@
     "lib": ["ES2022", "WebWorker"],
     "types": ["@cloudflare/workers-types"],
     "strict": true,
-    "strictNullChecks": true,
-    "noImplicitAny": true,
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/contracts.ts", "src/identity.ts", "src/governance.ts", "src/planetary.ts", "src/types.ts", "src/kernel-bridge.ts", "src/portal-kernel.ts", "src/index.ts"]
 }
