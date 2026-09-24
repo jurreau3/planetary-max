@@ -107,14 +107,20 @@ This will execute the full boot sequence:
 
 ### Worker and Kernel Bridge
 
-The production Worker uses the `PORTAL_KERNEL` Durable Object binding as its
-only kernel bridge. Universe, umbrella, and generic kernel requests all pass
-through the same `/api/kernel/message` Durable Object endpoint. OS-level
-requests are governance-preflighted by the Durable Object and then forwarded
-through the typed `MAX_OS_1` service binding. No deployed Worker URL is stored
-in application code or configuration.
+Cloudflare Workers cannot start local subprocesses. Deploy the Python adapter
+behind the `portal-kernel` Worker and connect it through the required
+`KERNEL_SERVICE` service binding. The Portal-OS Worker enforces identity and
+governance, dispatches envelopes through the declarative MAX-OS-1 lane router,
+persists deterministic lane state through the `MAXOS_STATE` R2 binding, and
+sends the orchestrated envelope to that binding. Identity metadata is
+structurally checked at the edge; the kernel remains authoritative for
+credential verification. The Worker does not define local demo routes. For
+local adapter development:
 
-The Python adapter remains available for local kernel regression development:
+Phase 11 adds deterministic request tracing, structured JSON logs, no-op-safe
+metrics, bounded kernel/substrate retries and timeouts, and a kernel circuit
+breaker. Runtime limits are configured through the timeout, retry, and circuit
+variables in `wrangler.toml`.
 
 ```bash
 python kernel/http_adapter.py --port 8788
