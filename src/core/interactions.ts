@@ -8,14 +8,8 @@ export function bindInteractions<T extends EventTarget>(
   target: T,
   handlers: PortalInteractionHandler = {},
 ) {
-  const onHover = () => {
-    handlers.onHover?.('hover');
-    handlers.onEvent?.('pointerover');
-  };
-  const onClick = () => {
-    handlers.onClick?.('click');
-    handlers.onEvent?.('pointerdown');
-  };
+  const onHover = () => handlers.onHover?.('hover');
+  const onClick = () => handlers.onClick?.('click');
 
   target.addEventListener('pointerover', onHover);
   target.addEventListener('pointerdown', onClick);

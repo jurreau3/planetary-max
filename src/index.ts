@@ -35,6 +35,21 @@ app.get('/api/umbrella/status', (c) => c.json({
   mode: umbrellaMode(c.env.UMBRELLA_ENFORCEMENT),
   governance: governanceEnvelope(umbrellaMode(c.env.UMBRELLA_ENFORCEMENT)),
 }));
+app.get('/api/phase/status', (c) => c.json({
+  ok: true,
+  service: 'Portal-OS',
+  phase: c.env.PORTAL_OS_PHASE ?? '11',
+}));
+app.get('/api/planetary/mode', (c) => c.json({
+  ok: true,
+  service: 'Planetary Mode',
+  mode: c.env.PLANETARY_MODE ?? 'single',
+}));
+app.get('/api/version', (c) => c.json({
+  ok: true,
+  service: 'MAX-OS-1',
+  version: c.env.MAX_OS_VERSION ?? '1',
+}));
 
 app.get('/kernel', (c) => c.json({ ok: true, lane: 'kernel', lanes: ['identity', 'windows', 'sim', 'umbrella'] }));
 app.post('/kernel', async (c) => dispatchRequest(c));

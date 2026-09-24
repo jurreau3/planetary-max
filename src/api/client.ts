@@ -12,6 +12,9 @@ export const api = {
   kernel: { status: () => get('/kernel/status') },
   state: { read: () => get('/state') },
   umbrella: { status: () => get('/umbrella/status') },
+  phase: { status: () => get('/phase/status') },
+  planetary: { mode: () => get('/planetary/mode') },
+  version: { read: () => get('/version') },
 };
 
 export { API_BASE };
