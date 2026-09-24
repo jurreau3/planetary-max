@@ -1,20 +1,14 @@
 name = "planetary-max"
 main = "src/index.ts"
-compatibility_date = "2026-09-17"
+compatibility_date = "2024-09-21"
 
 [vars]
+PORTAL_OS_PHASE = "11"
+PLANETARY_MODE = "single"
+UMBRELLA_ENFORCEMENT = "strict"
 IDENTITY_JWT_ISSUER = "portal-login"
 IDENTITY_JWT_AUDIENCE = "planetary-max"
-PORTAL_OS_PHASE = "11"
-KERNEL_TIMEOUT_MS = "5000"
-SUBSTRATE_TIMEOUT_MS = "3000"
-PLANETARY_MODE = "active"
 MAX_OS_VERSION = "1"
-UMBRELLA_ENFORCEMENT = "strict"
-MAX_RETRY_ATTEMPTS = "3"
-RETRY_BASE_DELAY_MS = "50"
-CIRCUIT_FAILURE_THRESHOLD = "5"
-CIRCUIT_COOLDOWN_MS = "30000"
 
 [durable_objects]
 bindings = [
@@ -23,15 +17,13 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["PortalKernel"]
+new_classes = ["PortalKernel"]
 
 [[kv_namespaces]]
 binding = "MAXOS_STATE"
-id = "maxos_state"
+id = "d2f70f669d0a4a499e7262a7cc2a56d2"
 
 [[services]]
 binding = "MAX_OS_1"
 service = "max-os-1"
-
-[build]
-command = "npm run build"
+environment = "production"
