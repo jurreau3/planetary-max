@@ -107,38 +107,42 @@ This will execute the full boot sequence:
 
 ### Worker and Kernel Bridge
 
-Cloudflare Workers cannot start local subprocesses. Deploy the Python adapter
-behind the `portal-kernel` Worker and connect it through the required
-`KERNEL_SERVICE` service binding. The Portal-OS Worker enforces identity and
-governance, dispatches envelopes through the declarative MAX-OS-1 lane router,
-persists deterministic lane state through the `MAXOS_STATE` R2 binding, and
-sends the orchestrated envelope to that binding. Identity metadata is
-structurally checked at the edge; the kernel remains authoritative for
-credential verification. The Worker does not define local demo routes. For
-local adapter development:
+The Hono Worker is the only public entrypoint. It validates the GUI bearer
+token, builds the shared envelope, and calls the `PortalKernel` Durable Object
+through `callKernel()`. The Durable Object owns the lane registry and persists
+SIM, substrate, and universe state in Durable Object storage.
 
-Phase 11 adds deterministic request tracing, structured JSON logs, no-op-safe
-metrics, bounded kernel/substrate retries and timeouts, and a kernel circuit
-breaker. Runtime limits are configured through the timeout, retry, and circuit
-variables in `wrangler.toml`.
+The shared envelope is:
 
-```bash
-python kernel/http_adapter.py --port 8788
+```json
+{
+  "id": "message-123",
+  "type": "sim",
+  "payload": { "observation": "stable" },
+  "identity": "bearer-token",
+  "governanceContext": {}
+}
 ```
 
-Worker API requests use per-login HS256 JWTs. Configure the shared signing key
-as a server-only Cloudflare secret before deployment; never commit it to the
-repository:
+Successful kernel responses expose aligned `lanes`, `results`, and `output`
+fields. GUI routes normalize `output` into `{ ok, data, meta }`.
+
+OS-level messages use an `os.` prefix, for example `os.identity`. When
+`MAX_OS_1` or `MAXOS_URL` is configured, `callKernel()` adapts and forwards
+those envelopes to MAX-OS-1 at `/kernel/message`. The explicit
+`POST /os/kernel/message` route provides the same authenticated bridge for
+callers that do not use an `os.*` type. MAX-OS-1 is never called by the GUI
+directly, and MAX-OS-1 does not call planetary-max.
+
+The Durable Object binding and its SQLite migration are declared in
+`wrangler.toml`. Deploy them together with:
 
 ```bash
-npx wrangler secret put IDENTITY_JWT_SECRET
+npm test
+npm run check
+npx wrangler deploy --dry-run
+npx wrangler deploy
 ```
-
-The token must contain `sub` and a future `exp` claim. Its issuer and audience
-must match `IDENTITY_JWT_ISSUER` and `IDENTITY_JWT_AUDIENCE` when those settings
-are configured.
-
-## Phase 11 Cloudflare deployment
 
 `wrangler.toml` is already configured with:
 
@@ -269,6 +273,7 @@ views:
 ```bash
 python -c "from kernel.invariants import InvariantChecker; InvariantChecker().check_all()"
 python tests/integration_rebuild2.py
+npm test
 npm run check
 npm test
 ```
@@ -278,7 +283,7 @@ npm test
 - **Rebuild 2**: Complete
 - **Architecture**: Defined
 - **Core Modules**: Initialized
-- **Next Phase**: Deploy MAX-OS-1, authenticate Wrangler, deploy planetary-max, then point the GUI environment URLs at the deployed Worker
+- **Next Phase**: Configure the optional MAX-OS-1 service binding in each Cloudflare environment
 
 ---
 
