@@ -231,10 +231,14 @@ async function kernelResponse(
     if (!result.ok || !normalize) return Response.json(result, { status });
     return Response.json(normalizeResponse(result, envelope), { status });
   } catch (error) {
-    console.error('Worker to kernel bridge failed', error);
-    return Response.json(
-      { ok: false, error: { code: 'KERNEL_UNAVAILABLE', message: 'Kernel bridge unavailable' } },
-      { status: 503 },
+    observability.metrics.increment('maxos_failures_total', { stage: 'worker' });
+    observability.logger.error('request.failed', {
+      errorCode: error instanceof MaxOsError ? error.code : 'KERNEL_UNAVAILABLE',
+    });
+    return toErrorResponse(
+      error instanceof SyntaxError
+        ? new KernelError('Kernel returned invalid JSON', 'KERNEL_INVALID_RESPONSE', 502)
+        : error,
     );
   }
 }
