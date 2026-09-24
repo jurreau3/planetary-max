@@ -1,93 +1,54 @@
 import { describe, expect, it } from 'vitest';
 
-import type { KernelEnvelope } from './contracts';
-import { KernelEngine, type LaneExecutionContext } from './kernel-engine';
+import PortalKernel from './portal-kernel';
 
-function envelope(type: string, payload: Record<string, unknown> = {}): KernelEnvelope {
-  return {
-    id: `message-${type}`,
-    type,
-    payload,
-    identity: 'operator',
-    governanceContext: {},
-  };
-}
-
-function engine(governanceContext: Record<string, unknown> = {}): KernelEngine {
-  const values = new Map<string, unknown>();
-  const storage = {
-    get: async <T>(key: string): Promise<T | undefined> => values.get(key) as T | undefined,
-    put: async (key: string, value: unknown): Promise<void> => {
-      values.set(key, structuredClone(value));
-    },
-  } as unknown as DurableObjectStorage;
-  const context: LaneExecutionContext = {
-    identity: 'operator',
-    governanceContext,
-    planetaryMode: 'single',
-    umbrellaEnforcement: 'strict',
-    storage,
-  };
-  return new KernelEngine(context);
-}
-
-describe('KernelEngine', () => {
-  it('aggregates lane data in the stable KernelResult shape', async () => {
-    const result = await engine().dispatch(envelope('identity.physics.license', { level: 'full' }));
-
-    expect(result).toMatchObject({
-      ok: true,
-      messageId: 'message-identity.physics.license',
-      type: 'identity.physics.license',
-      identity: 'operator',
-      route: ['identity-physics'],
-      result: {
-        lanes: [
-          {
-            lane: 'identity-physics',
-            result: { results: [{ result: { data: { licensed: true, mode: 'single' } } }] },
-          },
-        ],
-      },
-    });
-  });
-
-  it('persists universe ticks across dispatches', async () => {
-    const kernel = engine();
-
-    const tick = await kernel.dispatch(
-      envelope('universe.tick', { changes: { population: 2, climate: 'stable' } }),
+describe('PortalKernel stable surface', () => {
+  const makeKernel = () =>
+    new PortalKernel(
+      { storage: { get: async () => undefined, put: async () => undefined } } as unknown as DurableObjectState,
+      { PORTAL_OS_PHASE: '11', UMBRELLA_ENFORCEMENT: 'strict' },
     );
-    const state = await kernel.dispatch(envelope('universe.state'));
 
-    expect(tick.result?.lanes?.[0].result.results[0].result.data).toMatchObject({
-      started: true,
-      tick: 1,
-      ecosystem: { population: 2, resources: 100, climate: 'stable' },
-    });
-    expect(state.result?.lanes?.[0].result.results[0].result.data).toMatchObject({
-      started: true,
-      tick: 1,
+  it('exposes a health response for non-message requests', async () => {
+    const response = await makeKernel().fetch(new Request('https://kernel.test/health'));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      service: 'PortalKernel',
+      phase: '11',
     });
   });
 
-  it('rejects unsupported message types', async () => {
-    const result = await engine().dispatch(envelope('unknown.operation'));
+  it('accepts a stable identity lane message', async () => {
+    const response = await makeKernel().fetch(
+      new Request('https://kernel.test/api/kernel/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'm-1', lane: 'identity', payload: { ok: true }, identity: 'operator' }),
+      }),
+    );
 
-    expect(result).toEqual({
-      ok: false,
-      messageId: 'message-unknown.operation',
-      error: { code: 'INVALID_MESSAGE', message: 'Unsupported message type: unknown.operation' },
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      lane: 'identity',
+      data: { surface: 'identity', authenticated: true },
     });
   });
 
-  it('enforces governance denial before any lane executes', async () => {
-    const result = await engine({ deny: true }).dispatch(envelope('universe.tick'));
+  it('rejects malformed envelopes without a lane', async () => {
+    const response = await makeKernel().fetch(
+      new Request('https://kernel.test/api/kernel/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'bad', payload: {} }),
+      }),
+    );
 
-    expect(result).toEqual({
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
       ok: false,
-      messageId: 'message-universe.tick',
-      error: { code: 'FORBIDDEN', message: 'Governance context denied this operation' },
+      error: { code: 'INVALID_ENVELOPE' },
     });
   });
 });
