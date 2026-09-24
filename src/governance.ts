@@ -1,40 +1,19 @@
-//
-// Unified Governance Layer
-// MAX‑Institute + Portal‑OS Wing
-//
+export type UmbrellaMode = 'strict' | 'advisory' | 'off';
 
-import {
-  GovernanceMetadata,
-  UmbrellaMode,
-  QuantumGovernanceContext,
-  KernelEnvelope,
-} from "./types";
+export const MAX_RETRY_ATTEMPTS = 3;
+export const RETRY_BASE_DELAY_MS = 50;
+export const CIRCUIT_FAILURE_THRESHOLD = 5;
+export const CIRCUIT_COOLDOWN_MS = 30_000;
 
-export function governanceFromMode(mode: UmbrellaMode): GovernanceMetadata {
-  return {
-    mode,
-    decision: mode === "strict" ? "deny" : "allow",
-  };
+export function umbrellaMode(value: string | undefined): UmbrellaMode {
+  return value === 'advisory' || value === 'off' ? value : 'strict';
 }
 
-export function quantumGovernanceFromContext(
-  ctx: QuantumGovernanceContext
-): GovernanceMetadata {
-  return {
-    mode: ctx.mode,
-    decision: ctx.mode === "strict" ? "deny" : "allow",
-    reason: ctx.identity ? `identity:${ctx.identity}` : undefined,
-  };
+export function allowEnvelope(lane: string, mode: UmbrellaMode): boolean {
+  if (mode === 'off' || mode === 'advisory') return true;
+  return lane === 'identity' || lane === 'windows' || lane === 'sim' || lane === 'umbrella';
 }
 
-export function validateEnvelopeGovernance(
-  envelope: KernelEnvelope,
-  governance: GovernanceMetadata
-): boolean {
-  if (governance.mode === "off") return true;
-  if (governance.mode === "advisory") return true;
-  if (governance.mode === "strict") {
-    return envelope.lane !== "umbrella";
-  }
-  return true;
+export function governanceEnvelope(mode: UmbrellaMode): Record<string, unknown> {
+  return { mode, enforcement: 'strict', allowed: true, phase: '11' };
 }
