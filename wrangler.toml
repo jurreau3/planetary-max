@@ -1,7 +1,25 @@
 name = "planetary-max"
-main = "src/index.ts"
-compatibility_date = "2024-09-21"
+main = "dist/index.js"
+compatibility_date = "2024-09-01"
 
+# -----------------------------------------------------
+# Durable Object: PortalKernel
+# -----------------------------------------------------
+[durable_objects]
+bindings = [
+  { name = "PORTAL_KERNEL", class_name = "PortalKernel" }
+]
+
+# -----------------------------------------------------
+# KV Namespaces
+# -----------------------------------------------------
+[[kv_namespaces]]
+binding = "MAXOS_STATE"
+id = "d2f70f669d0a4a499e7262a7cc2a56d2"
+
+# -----------------------------------------------------
+# Environment Variables
+# -----------------------------------------------------
 [vars]
 PORTAL_OS_PHASE = "11"
 PLANETARY_MODE = "single"
@@ -10,20 +28,17 @@ IDENTITY_JWT_ISSUER = "portal-login"
 IDENTITY_JWT_AUDIENCE = "planetary-max"
 MAX_OS_VERSION = "1"
 
-[durable_objects]
+# -----------------------------------------------------
+# Worker Bindings
+# -----------------------------------------------------
+[worker]
 bindings = [
-  { name = "PORTAL_KERNEL", class_name = "PortalKernel" }
+  { name = "MAX_OS_1", type = "worker", worker = "max-os-1" }
 ]
 
+# -----------------------------------------------------
+# REQUIRED MIGRATION (Fixes your deploy error)
+# -----------------------------------------------------
 [[migrations]]
 tag = "v1"
-new_classes = ["PortalKernel"]
-
-[[kv_namespaces]]
-binding = "MAXOS_STATE"
-id = "d2f70f669d0a4a499e7262a7cc2a56d2"
-
-[[services]]
-binding = "MAX_OS_1"
-service = "max-os-1"
-environment = "production"
+new_sqlite_classes = ["PortalKernel"]
