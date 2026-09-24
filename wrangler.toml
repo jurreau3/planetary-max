@@ -18,3 +18,10 @@ bindings = [
 [[kv_namespaces]]
 binding = "MAXOS_STATE"
 id = "d2f70f669d0a4a499e7262a7cc2a56d2"
+
+
+[[services]]
+binding = "MAX_OS_1"
+service = "max-os-1"
+environment = "production"
+
