@@ -280,8 +280,8 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // PortalKernel DO route
-    if (url.pathname === "/kernel") {
+    // Intercept ALL /kernel traffic before Hono sees it
+    if (url.pathname === "/kernel" || url.pathname.startsWith("/kernel/")) {
       const id = env.PORTAL_KERNEL.idFromName("portal-kernel");
       const stub = env.PORTAL_KERNEL.get(id);
       return stub.fetch(request);
@@ -291,3 +291,4 @@ export default {
     return app.fetch(request, env, ctx);
   }
 };
+
