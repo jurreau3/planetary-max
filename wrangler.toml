@@ -3,6 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2026-09-25"
 compatibility_flags = ["nodejs_compat"]
 
+# -----------------------------
+# ENVIRONMENT VARIABLES
+# -----------------------------
 [vars]
 PORTAL_OS_PHASE = "11"
 PLANETARY_MODE = "single"
@@ -12,16 +15,25 @@ IDENTITY_JWT_AUDIENCE = "planetary-max"
 MAX_OS_VERSION = "1"
 IDENTITY_JWT_SECRET = "your-hmac-secret"
 
+# -----------------------------
+# KV NAMESPACE
+# -----------------------------
 kv_namespaces = [
   { binding = "MAXOS_STATE", id = "d2f70f669d0a4a499e7262a7cc2a56d2" }
 ]
 
+# -----------------------------
+# DURABLE OBJECT BINDINGS
+# -----------------------------
 [durable_objects]
 bindings = [
   { name = "PORTAL_KERNEL", class_name = "PortalKernel" },
   { name = "new_sqlite_classes", class_name = "new_sqlite_classes" }
 ]
 
+# -----------------------------
+# DURABLE OBJECT EXPORTS (SQLite)
+# -----------------------------
 [exports.PortalKernel]
 type = "durable-object"
 storage = "sqlite"
@@ -30,9 +42,15 @@ storage = "sqlite"
 type = "durable-object"
 storage = "sqlite"
 
+# -----------------------------
+# PLACEMENT
+# -----------------------------
 [placement]
 mode = "smart"
 
+# -----------------------------
+# OBSERVABILITY
+# -----------------------------
 [observability]
 enabled = true
 
