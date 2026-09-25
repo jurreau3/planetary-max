@@ -280,4 +280,12 @@ export { new_sqlite_classes } from './do/new_sqlite_classes';
 // ------------------------------------------------------------
 export default {
   fetch: app.fetch,
+  };
+export default {
+  async fetch(request, env) {
+    const id = env.PORTAL_KERNEL.newUniqueId();
+    const stub = env.PORTAL_KERNEL.get(id);
+    return stub.fetch(request);
+  }
 };
+
