@@ -212,8 +212,6 @@ app.route('/api', router);
 // ------------------------------------------------------------
 // Kernel bridge surfaces (static)
 // ------------------------------------------------------------
-
-
 app.post('/kernel', async (c) => dispatchRequest(c));
 app.post('/api/kernel/message', async (c) => dispatchRequest(c));
 
@@ -276,7 +274,7 @@ export default {
 
     // Intercept ALL /kernel traffic before Hono sees it
     if (url.pathname === "/kernel" || url.pathname.startsWith("/kernel/")) {
-     const id = env.PORTAL_KERNEL.idFromName("kernel");
+      const id = env.PORTAL_KERNEL.idFromName("kernel");
       const stub = env.PORTAL_KERNEL.get(id);
       return stub.fetch(request);
     }
@@ -285,4 +283,3 @@ export default {
     return app.fetch(request, env, ctx);
   }
 };
-
