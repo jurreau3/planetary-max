@@ -1,4 +1,13 @@
 
-export { new_sqlite_classes } from './new_sqlite_classes';
+export class PortalKernel {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async fetch(request) {
+    return new Response("PortalKernel OK");
+  }
+}
 
 
