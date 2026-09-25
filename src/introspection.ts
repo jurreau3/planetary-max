@@ -17,7 +17,10 @@ import {
   EpistemicTimeline,
   InstituteCanon,
 } from "./types";
+
 import { runInference } from "./inference";
+import { requireAuth } from "./auth";
+import { isRecord } from "./utils";
 
 export type IntrospectionKind =
   | "sim.behavior"
@@ -45,39 +48,46 @@ export type IntrospectionKind =
   | "planetary.governance"
   | "planetary.state";
 
-type SimulationIntrospectionState = PortalKernelState & Readonly<{
+//
+// Simulation Introspection State
+//
+export type SimulationIntrospectionState = PortalKernelState & Readonly<{
   eventLog: ReadonlyArray<SimEvent>;
   diffLog: ReadonlyArray<SimTickDiff>;
   tecTasks: Readonly<Record<string, SimTecTaskState>>;
   quantum: QuantumOverlay;
 }>;
 
+//
+// Kernel DO endpoints
+//
 const KERNEL_OBJECT_NAME = "portal-kernel";
 const SIMULATION_STATE_URL = "https://portal-kernel.invalid/kernel/sim/state";
 const INSTITUTE_STATE_URL = "https://portal-kernel.invalid/kernel/institute/state";
 const PLANETARY_STATE_URL = "https://portal-kernel.invalid/kernel/planetary/state";
 
-const INSTITUTE_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> =
-  new Set<IntrospectionKind>([
-    "institute.canon",
-    "institute.truths",
-    "institute.timeline",
-    "institute.stability",
-    "institute.signature",
-    "institute.timelines",
-  ]);
+//
+// Introspection Kind Sets
+//
+const INSTITUTE_INTROSPECTION_KINDS = new Set<IntrospectionKind>([
+  "institute.canon",
+  "institute.truths",
+  "institute.timeline",
+  "institute.stability",
+  "institute.signature",
+  "institute.timelines",
+]);
 
-const PLANETARY_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> =
-  new Set<IntrospectionKind>([
-    "planetary.identity",
-    "planetary.substrate",
-    "planetary.quantum",
-    "planetary.canon",
-    "planetary.governance",
-    "planetary.state",
-  ]);
+const PLANETARY_INTROSPECTION_KINDS = new Set<IntrospectionKind>([
+  "planetary.identity",
+  "planetary.substrate",
+  "planetary.quantum",
+  "planetary.canon",
+  "planetary.governance",
+  "planetary.state",
+]);
 
-const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<IntrospectionKind>([
+const SIMULATION_INTROSPECTION_KINDS = new Set<IntrospectionKind>([
   "sim.behavior",
   "identity.timeline",
   "windows.focus",
@@ -94,9 +104,10 @@ const SIMULATION_INTROSPECTION_KINDS: ReadonlySet<IntrospectionKind> = new Set<I
   "quantum.signature",
 ]);
 
-export function attachIntrospectionRoutes(
-  app: Hono<{ Bindings: Bindings }>,
-): void {
+//
+// Route Attachment
+//
+export function attachIntrospectionRoutes(app: Hono<{ Bindings: Bindings }>): void {
   app.get("/api/introspection/sim/behavior", introspectionHandler("sim.behavior"));
   app.get("/api/introspection/identity/timeline", introspectionHandler("identity.timeline"));
   app.get("/api/introspection/windows/focus", introspectionHandler("windows.focus"));
@@ -123,42 +134,32 @@ export function attachIntrospectionRoutes(
   app.get("/api/introspection/planetary/state", introspectionHandler("planetary.state"));
 }
 
-// -------------------------------------------------------------
+//
 // Quantum Introspection
-// -------------------------------------------------------------
-
-export function introspectQuantumState(
-  global: Record<string, unknown>,
-  ctx: AuthContext
-): QuantumOverlay | null {
+//
+export function introspectQuantumState(global: Record<string, unknown>, ctx: AuthContext): QuantumOverlay | null {
   requireAuth(ctx);
   return (global[QUANTUM_STATE_KEY] as QuantumOverlay) ?? null;
 }
 
-export function introspectQuantumBranches(
-  global: Record<string, unknown>,
-  ctx: AuthContext
-) {
+export function introspectQuantumBranches(global: Record<string, unknown>, ctx: AuthContext) {
   const overlay = introspectQuantumState(global, ctx);
   return overlay ? overlay.branches : [];
 }
 
-export function introspectQuantumCurvature(
-  global: Record<string, unknown>,
-  ctx: AuthContext
-) {
+export function introspectQuantumCurvature(global: Record<string, unknown>, ctx: AuthContext) {
   const overlay = introspectQuantumState(global, ctx);
   return overlay ? overlay.curvature : null;
 }
 
-export function introspectQuantumSignature(
-  global: Record<string, unknown>,
-  ctx: AuthContext
-) {
+export function introspectQuantumSignature(global: Record<string, unknown>, ctx: AuthContext) {
   const overlay = introspectQuantumState(global, ctx);
   return overlay ? overlay.signature : null;
 }
 
+//
+// Planetary Introspection
+//
 function planetaryIntrospectionResult(kind: IntrospectionKind, state: PlanetaryState): unknown {
   if (kind === "planetary.identity") return state.identities;
   if (kind === "planetary.substrate") return state.substrate;
@@ -170,106 +171,94 @@ function planetaryIntrospectionResult(kind: IntrospectionKind, state: PlanetaryS
   return state;
 }
 
-export function introspectSimSubstrate(
-  sim: Record<string, unknown>,
-  ctx: AuthContext
-): SimSubstrateState | null {
+export function introspectPlanetaryIdentity(planetary: PlanetaryState, ctx: AuthContext) {
+  requireAuth(ctx);
+  return planetary.nodes.map((n) => n.identity);
+}
+
+export function introspectPlanetarySubstrate(planetary: PlanetaryState, ctx: AuthContext) {
+  requireAuth(ctx);
+  return planetary.nodes.map((n) => n.substrate);
+}
+
+export function introspectPlanetaryQuantum(planetary: PlanetaryState, ctx: AuthContext) {
+  requireAuth(ctx);
+  return planetary.nodes.map((n) => n.quantum);
+}
+
+export function introspectPlanetaryGovernance(planetary: PlanetaryState, ctx: AuthContext) {
+  requireAuth(ctx);
+  return planetary.nodes.map((n) => ({
+    identity: n.identity.id,
+    signature: n.identity.signature,
+  }));
+}
+
+//
+// Simulation Introspection
+//
+export function introspectSimSubstrate(sim: Record<string, unknown>, ctx: AuthContext): SimSubstrateState | null {
   requireAuth(ctx);
   return (sim.substrate as SimSubstrateState) ?? null;
 }
 
-export function introspectSimWindows(
-  sim: Record<string, unknown>,
-  ctx: AuthContext
-): Record<string, SimWindowState> {
+export function introspectSimWindows(sim: Record<string, unknown>, ctx: AuthContext): Record<string, SimWindowState> {
   requireAuth(ctx);
   return (sim.windows as Record<string, SimWindowState>) ?? {};
 }
 
-export function introspectSimIdentity(
-  sim: Record<string, unknown>,
-  ctx: AuthContext
-): Record<string, SimAgentState> {
+export function introspectSimIdentity(sim: Record<string, unknown>, ctx: AuthContext): Record<string, SimAgentState> {
   requireAuth(ctx);
   return (sim.identity as Record<string, SimAgentState>) ?? {};
 }
 
-export function introspectSimTecPipeline(
-  sim: Record<string, unknown>,
-  ctx: AuthContext
-): Record<string, SimTecTaskState> {
+export function introspectSimTecPipeline(sim: Record<string, unknown>, ctx: AuthContext): Record<string, SimTecTaskState> {
   requireAuth(ctx);
   return (sim.tec as Record<string, SimTecTaskState>) ?? {};
 }
 
-// -------------------------------------------------------------
+//
 // Kernel Introspection
-// -------------------------------------------------------------
-
-export function introspectKernelHeatmap(
-  kernel: KernelResult,
-  ctx: AuthContext
-) {
+//
+export function introspectKernelHeatmap(kernel: KernelResult, ctx: AuthContext) {
   requireAuth(ctx);
   return kernel.body ?? null;
 }
 
-export function introspectKernelMessages(
-  kernel: KernelResult,
-  ctx: AuthContext
-) {
+export function introspectKernelMessages(kernel: KernelResult, ctx: AuthContext) {
   requireAuth(ctx);
   return kernel.body?.messages ?? [];
 }
 
-export function introspectKernelLogs(
-  kernel: KernelResult,
-  ctx: AuthContext
-) {
+export function introspectKernelLogs(kernel: KernelResult, ctx: AuthContext) {
   requireAuth(ctx);
   return kernel.body?.logs ?? [];
 }
 
-export function introspectInferenceArtifacts(
-  kernel: KernelResult,
-  ctx: AuthContext
-) {
+export function introspectInferenceArtifacts(kernel: KernelResult, ctx: AuthContext) {
   requireAuth(ctx);
   return kernel.body?.inference ?? null;
 }
 
-// -------------------------------------------------------------
+//
 // Institute Introspection
-// -------------------------------------------------------------
-
-export function introspectInstituteCanon(
-  institute: InstituteState,
-  ctx: AuthContext
-): InstituteCanon {
+//
+export function introspectInstituteCanon(institute: InstituteState, ctx: AuthContext): InstituteCanon {
   requireAuth(ctx);
   return institute.canon;
 }
 
-export function introspectInstituteTruths(
-  institute: InstituteState,
-  ctx: AuthContext
-) {
+export function introspectInstituteTruths(institute: InstituteState, ctx: AuthContext) {
   requireAuth(ctx);
   return institute.canon.truths;
 }
 
-export function introspectInstituteTimeline(
-  institute: InstituteState,
-  ctx: AuthContext
-): EpistemicTimeline {
+export function introspectInstituteTimeline(institute: InstituteState, ctx: AuthContext): EpistemicTimeline {
   requireAuth(ctx);
   return institute.timeline;
 }
 
-export function introspectInstituteStability(
-  institute: InstituteState,
-  ctx: AuthContext
-) {
+export function introspectInstituteStability(institute: InstituteState, ctx: AuthContext) {
   requireAuth(ctx);
   return institute.canon.truths.map((t) => ({
     id: t.id,
@@ -277,68 +266,15 @@ export function introspectInstituteStability(
   }));
 }
 
-export function introspectInstituteSignature(
-  institute: InstituteState,
-  ctx: AuthContext
-) {
+export function introspectInstituteSignature(institute: InstituteState, ctx: AuthContext) {
   requireAuth(ctx);
   return institute.canon.signature;
 }
 
-export function introspectInstituteTimelines(
-  institute: InstituteState,
-  ctx: AuthContext
-) {
+export function introspectInstituteTimelines(institute: InstituteState, ctx: AuthContext) {
   requireAuth(ctx);
   return {
     timeline: institute.timeline,
     truths: institute.canon.truths,
   };
-}
-
-// -------------------------------------------------------------
-// Planetary Introspection
-// -------------------------------------------------------------
-
-export function introspectPlanetaryIdentity(
-  planetary: PlanetaryState,
-  ctx: AuthContext
-) {
-  requireAuth(ctx);
-  return planetary.nodes.map((n) => n.identity);
-}
-
-export function introspectPlanetarySubstrate(
-  planetary: PlanetaryState,
-  ctx: AuthContext
-) {
-  requireAuth(ctx);
-  return planetary.nodes.map((n) => n.substrate);
-}
-
-export function introspectPlanetaryQuantum(
-  planetary: PlanetaryState,
-  ctx: AuthContext
-) {
-  requireAuth(ctx);
-  return planetary.nodes.map((n) => n.quantum);
-}
-
-function isPlanetaryState(value: unknown): value is PlanetaryState {
-  return isRecord(value) && typeof value.globalTick === "number" && isRecord(value.nodes) &&
-    isRecord(value.identities) && isRecord(value.substrates) && isRecord(value.substrate) &&
-    isRecord(value.quantum) && isRecord(value.canon) && isRecord(value.governance) &&
-    typeof value.synchronizedAt === "number" && typeof value.packetSignature === "string" &&
-    Array.isArray(value.advisories);
-}
-
-export function introspectPlanetaryGovernance(
-  planetary: PlanetaryState,
-  ctx: AuthContext
-) {
-  requireAuth(ctx);
-  return planetary.nodes.map((n) => ({
-    identity: n.identity.id,
-    signature: n.identity.signature,
-  }));
 }
