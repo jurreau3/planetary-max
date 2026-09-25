@@ -44,7 +44,7 @@ export class PortalKernel {
     const url = new URL(request.url);
 
     // ------------------------------
-    // Interactive Window Manager API
+    // Window Manager API
     // ------------------------------
     if (url.pathname === '/api/windows/state') {
       return Response.json(await this.getWindowManagerState());
@@ -73,7 +73,7 @@ export class PortalKernel {
     }
 
     // ------------------------------
-    // Interactive Portal Surface API
+    // Portal Surface API
     // ------------------------------
     if (url.pathname === '/api/portal/open' && request.method === 'POST') {
       const body = await request.json();
