@@ -1,3 +1,4 @@
-export { default as PortalKernel } from '../portal-kernel';
-export { default } from '../portal-kernel';
+export { PortalKernel } from './PortalKernel';
+export { new_sqlite_classes } from './new_sqlite_classes';
+
 
