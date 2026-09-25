@@ -10,6 +10,7 @@ UMBRELLA_ENFORCEMENT = "strict"
 IDENTITY_JWT_ISSUER = "portal-login"
 IDENTITY_JWT_AUDIENCE = "planetary-max"
 MAX_OS_VERSION = "1"
+IDENTITY_JWT_SECRET = "your-hmac-secret"
 
 kv_namespaces = [
   { binding = "MAXOS_STATE", id = "d2f70f669d0a4a499e7262a7cc2a56d2" }
@@ -34,8 +35,6 @@ mode = "smart"
 
 [observability]
 enabled = true
-[vars]
-IDENTITY_JWT_SECRET = "your-hmac-secret"
 
 [observability.logs]
 enabled = true
