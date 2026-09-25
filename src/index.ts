@@ -212,9 +212,7 @@ app.route('/api', router);
 // ------------------------------------------------------------
 // Kernel bridge surfaces (static)
 // ------------------------------------------------------------
-app.get('/kernel', (c) =>
-  c.json({ ok: true, lane: 'kernel', lanes: ['identity', 'windows', 'sim', 'umbrella'] }),
-);
+
 
 app.post('/kernel', async (c) => dispatchRequest(c));
 app.post('/api/kernel/message', async (c) => dispatchRequest(c));
