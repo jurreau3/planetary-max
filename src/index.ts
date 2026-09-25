@@ -22,7 +22,7 @@ app.use(
 );
 
 // ------------------------------------------------------------
-// Stable root + health
+// Root + health
 // ------------------------------------------------------------
 app.get('/', (c) =>
   c.json({ ok: true, service: 'planetary-max', phase: c.env.PORTAL_OS_PHASE ?? '11' }),
@@ -124,37 +124,37 @@ router.get('/version/read', (c) =>
 );
 
 // ------------------------------------------------------------
-// MAX-OS Window Manager Introspection API
+// MAX-OS Window Manager Introspection API (Unified DO)
 // ------------------------------------------------------------
 router.get('/introspection/windows/state', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('wm'));
+  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
   const result = await kernel.fetch(new Request('https://portal/api/windows/state'));
   return c.json(await result.json());
 });
 
 router.get('/introspection/windows/focus', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('wm'));
+  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
   const result = await kernel.fetch(new Request('https://portal/api/windows/focus'));
   return c.json(await result.json());
 });
 
 router.get('/introspection/windows/layout', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('wm'));
+  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
   const result = await kernel.fetch(new Request('https://portal/api/windows/layout'));
   return c.json(await result.json());
 });
 
 router.get('/introspection/windows/timeline', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('wm'));
+  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
   const result = await kernel.fetch(new Request('https://portal/api/windows/timeline'));
   return c.json(await result.json());
 });
 
 // ------------------------------------------------------------
-// MAX-OS Window Manager Interactive API
+// MAX-OS Window Manager Interactive API (Unified DO)
 // ------------------------------------------------------------
 router.post('/windows/open', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('wm'));
+  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
   const body = await c.req.json();
   const result = await kernel.fetch(
     new Request('https://portal/api/windows/open', {
@@ -166,7 +166,7 @@ router.post('/windows/open', async (c) => {
 });
 
 router.post('/windows/close', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('wm'));
+  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
   const body = await c.req.json();
   const result = await kernel.fetch(
     new Request('https://portal/api/windows/close', {
@@ -178,10 +178,10 @@ router.post('/windows/close', async (c) => {
 });
 
 // ------------------------------------------------------------
-// MAX-OS Portal Surface API
+// MAX-OS Portal Surface API (Unified DO)
 // ------------------------------------------------------------
 router.post('/portal/open', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('portal'));
+  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
   const body = await c.req.json();
   const result = await kernel.fetch(
     new Request('https://portal/api/portal/open', {
@@ -193,13 +193,13 @@ router.post('/portal/open', async (c) => {
 });
 
 router.get('/portal/state', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('portal'));
+  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
   const result = await kernel.fetch(new Request('https://portal/api/portal/state'));
   return c.json(await result.json());
 });
 
 router.get('/portal/timeline', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('portal'));
+  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
   const result = await kernel.fetch(new Request('https://portal/api/portal/timeline'));
   return c.json(await result.json());
 });
