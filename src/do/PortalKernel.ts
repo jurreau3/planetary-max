@@ -3,7 +3,6 @@ export class PortalKernel {
     this.state = state;
     this.env = env;
 
-    // Ensure kernel state is initialized before any requests are handled
     this.state.blockConcurrencyWhile(async () => {
       const stored = (await this.state.storage.get("kernel")) ?? {};
       this.kernel = normalize(stored);
@@ -16,6 +15,36 @@ export class PortalKernel {
 
     // Always work against in-memory kernel; persist only after mutations
     const kernel = this.kernel ?? normalize({});
+
+    // -----------------------------
+    // OS KERNEL MESSAGE HANDLER
+    // -----------------------------
+    if (path === "/kernel" || path === "/kernel/message") {
+      const envelope = await safeJson(request);
+
+      const lane = envelope.lane ?? envelope.type;
+      const payload = envelope.payload ?? envelope;
+
+      if (!lane) {
+        return Response.json(
+          { ok: false, error: { code: "MISSING_LANE", message: "lane is required" } },
+          { status: 400 }
+        );
+      }
+
+      const result = await this.routeLane(kernel, lane, payload);
+      await this.persist(kernel);
+
+      return Response.json({
+        ok: true,
+        lane,
+        data: result,
+        meta: {
+          id: envelope.id ?? crypto.randomUUID(),
+          phase: this.env.PORTAL_OS_PHASE ?? "11"
+        }
+      });
+    }
 
     // -----------------------------
     // WINDOWS — INTROSPECTION
@@ -136,6 +165,81 @@ export class PortalKernel {
     });
   }
 
+  // -----------------------------
+  // OS LANE ROUTING
+  // -----------------------------
+  async routeLane(kernel, lane, payload) {
+    switch (lane) {
+      case "identity": {
+        // Minimal identity lane stub: echo payload, mark identity as checked
+        kernel.timeline.push({
+          lane: "identity",
+          event: "check",
+          ts: Date.now(),
+          payload
+        });
+        return { identity: "ok", payload };
+      }
+
+      case "windows": {
+        // Expose current windows state via OS lane
+        kernel.timeline.push({
+          lane: "windows",
+          event: "introspect",
+          ts: Date.now()
+        });
+        return { windows: kernel.windows };
+      }
+
+      case "portal": {
+        kernel.timeline.push({
+          lane: "portal",
+          event: "introspect",
+          ts: Date.now()
+        });
+        return { portal: kernel.portal };
+      }
+
+      case "sim": {
+        // Stub SIM lane; you can wire to SIM later
+        kernel.timeline.push({
+          lane: "sim",
+          event: "stub",
+          ts: Date.now(),
+          payload
+        });
+        return { sim: "ready", payload };
+      }
+
+      case "umbrella": {
+        // Governance / umbrella enforcement stub
+        kernel.timeline.push({
+          lane: "umbrella",
+          event: "enforcement",
+          ts: Date.now(),
+          payload
+        });
+        return {
+          umbrella: this.env.UMBRELLA_ENFORCEMENT ?? "strict",
+          payload
+        };
+      }
+
+      default: {
+        kernel.timeline.push({
+          lane: "unknown",
+          event: "reject",
+          ts: Date.now(),
+          payload
+        });
+        return { ok: false, error: { code: "UNKNOWN_LANE", message: `lane ${lane} not supported` } };
+      }
+    }
+  }
+
+  // -----------------------------
+  // STATE PERSISTENCE
+  // -----------------------------
   async persist(kernel) {
     this.kernel = normalize(kernel);
     await this.state.storage.put("kernel", this.kernel);
