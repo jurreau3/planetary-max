@@ -9,6 +9,7 @@ import { governanceEnvelope, umbrellaMode } from './governance';
 import { windowsEnvelope } from './types';
 
 const app = new Hono<{ Bindings: Bindings }>();
+const PLANETARY_MODE_KEY = 'planetary:mode';
 
 app.use('*', cors({
   origin: '*',
@@ -31,7 +32,7 @@ app.get('/api/kernel/status', (c) => c.json({
   lane: 'kernel',
   lanes: ['identity', 'windows', 'sim', 'umbrella'],
 }));
-app.get('/api/state', (c) => c.json({
+app.get('/api/state/read', (c) => c.json({
   ok: true,
   service: 'MAXOS_STATE',
   configured: Boolean(c.env.MAXOS_STATE),
@@ -47,12 +48,15 @@ app.get('/api/phase/status', (c) => c.json({
   service: 'Portal-OS',
   phase: c.env.PORTAL_OS_PHASE ?? '11',
 }));
-app.get('/api/planetary/mode', (c) => c.json({
-  ok: true,
-  service: 'Planetary Mode',
-  mode: c.env.PLANETARY_MODE ?? 'single',
+app.get('/api/planetary/mode', async (c) => c.json({
+  mode: await planetaryMode(c.env),
 }));
-app.get('/api/version', (c) => c.json({
+app.post('/api/planetary/toggle', async (c) => {
+  const mode = (await planetaryMode(c.env)) === 'active' ? 'single' : 'active';
+  if (c.env.MAXOS_STATE) await c.env.MAXOS_STATE.put(PLANETARY_MODE_KEY, mode);
+  return c.json({ mode });
+});
+app.get('/api/version/read', (c) => c.json({
   ok: true,
   service: 'MAX-OS-1',
   version: c.env.MAX_OS_VERSION ?? '1',
@@ -61,6 +65,10 @@ app.get('/api/version', (c) => c.json({
 app.get('/kernel', (c) => c.json({ ok: true, lane: 'kernel', lanes: ['identity', 'windows', 'sim', 'umbrella'] }));
 app.post('/kernel', async (c) => dispatchRequest(c));
 app.post('/api/kernel/message', async (c) => dispatchRequest(c));
+
+async function planetaryMode(env: Bindings): Promise<string> {
+  return await env.MAXOS_STATE?.get(PLANETARY_MODE_KEY) ?? env.PLANETARY_MODE ?? 'single';
+}
 
 async function dispatchRequest(c: { req: { header(name: string): string | undefined; json(): Promise<unknown> }; env: Bindings }): Promise<Response> {
   let body: unknown;
