@@ -1,7 +1,17 @@
 import type { JsonObject } from './contracts';
 
+/**
+ * WindowId
+ *
+ * Unique identifier for a window instance.
+ */
 export type WindowId = string;
 
+/**
+ * WindowKind
+ *
+ * The type of window being displayed.
+ */
 export type WindowKind =
   | 'portal'
   | 'sim'
@@ -9,6 +19,11 @@ export type WindowKind =
   | 'panel'
   | 'overlay';
 
+/**
+ * WindowState
+ *
+ * Full state for a single window instance.
+ */
 export type WindowState = {
   id: WindowId;
   kind: WindowKind;
@@ -21,16 +36,31 @@ export type WindowState = {
   height: number;
 };
 
+/**
+ * WindowLayoutMode
+ *
+ * How windows are arranged.
+ */
 export type WindowLayoutMode =
   | 'floating'
   | 'tiled'
   | 'stacked';
 
+/**
+ * WindowLayout
+ *
+ * Layout container for all windows.
+ */
 export type WindowLayout = {
   mode: WindowLayoutMode;
   windows: WindowState[];
 };
 
+/**
+ * WindowTimelineEvent
+ *
+ * Historical events for window manager introspection.
+ */
 export type WindowTimelineEvent = {
   id: string;
   type: 'open' | 'close' | 'focus' | 'blur' | 'move' | 'resize';
@@ -39,6 +69,11 @@ export type WindowTimelineEvent = {
   payload?: JsonObject;
 };
 
+/**
+ * WindowManagerState
+ *
+ * Full state for the window manager.
+ */
 export type WindowManagerState = {
   active: boolean;
   focused: WindowId | null;
@@ -49,8 +84,7 @@ export type WindowManagerState = {
 /**
  * createEmptyWindowManagerState
  *
- * Base state for the window manager. Used by kernel and introspection
- * when no windows have been opened yet.
+ * Base state used when the kernel has no windows yet.
  */
 export function createEmptyWindowManagerState(): WindowManagerState {
   return {
@@ -67,8 +101,8 @@ export function createEmptyWindowManagerState(): WindowManagerState {
 /**
  * toWindowsEnvelope
  *
- * Converts a WindowManagerState into a public JSON envelope
- * compatible with /windows and introspection routes.
+ * Converts internal WindowManagerState into a public JSON envelope.
+ * Used by /windows and all introspection routes.
  */
 export function toWindowsEnvelope(state: WindowManagerState): JsonObject {
   return {
