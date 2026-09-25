@@ -4,8 +4,8 @@ import type { WindowId } from './windows';
 /**
  * PortalSurfaceState
  *
- * High‑level state for the Portal surface — the OS‑level canvas
- * that coordinates windows, timelines, and active modes.
+ * High‑level state for the Portal surface — the OS canvas that
+ * coordinates windows, modes, and surface activation.
  */
 export type PortalSurfaceState = {
   active: boolean;
@@ -15,9 +15,20 @@ export type PortalSurfaceState = {
   timeline: PortalTimelineEvent[];
 };
 
+/**
+ * PortalTimelineEvent
+ *
+ * Historical events for Portal surface introspection.
+ */
 export type PortalTimelineEvent = {
   id: string;
-  type: 'activate' | 'deactivate' | 'focus-window' | 'open-window' | 'close-window' | 'mode-change';
+  type:
+    | 'activate'
+    | 'deactivate'
+    | 'focus-window'
+    | 'open-window'
+    | 'close-window'
+    | 'mode-change';
   at: number;
   payload?: JsonObject;
 };
