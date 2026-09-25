@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { Bindings, KernelEnvelope, KernelLane, JsonObject } from './contracts';
+import type { Bindings, KernelEnvelope, KernelLane } from './contracts';
 import { asJsonObject } from './contracts';
 import { identityEnvelope } from './identity';
 import { callKernel } from './kernel-bridge';
@@ -9,6 +9,7 @@ import { governanceEnvelope, umbrellaMode } from './governance';
 import { windowsEnvelope } from './types';
 
 const app = new Hono<{ Bindings: Bindings }>();
+const router = new Hono<{ Bindings: Bindings }>();
 const PLANETARY_MODE_KEY = 'planetary:mode';
 
 app.use('*', cors({
@@ -25,42 +26,45 @@ app.get('/umbrella/mode', (c) => c.json({ ok: true, mode: umbrellaMode(c.env.UMB
 app.get('/sim', (c) => c.json(beeSimEnvelope()));
 app.get('/windows', (c) => c.json(windowsEnvelope()));
 
-app.get('/api/kernel/status', (c) => c.json({
+// The dashboard-facing API is mounted under /api as one explicit router.
+router.get('/kernel/status', (c) => c.json({
   ok: true,
   service: 'PortalKernel',
   phase: c.env.PORTAL_OS_PHASE ?? '11',
   lane: 'kernel',
   lanes: ['identity', 'windows', 'sim', 'umbrella'],
 }));
-app.get('/api/state/read', (c) => c.json({
+router.get('/state/read', (c) => c.json({
   ok: true,
   service: 'MAXOS_STATE',
   configured: Boolean(c.env.MAXOS_STATE),
 }));
-app.get('/api/umbrella/status', (c) => c.json({
+router.get('/umbrella/status', (c) => c.json({
   ok: true,
   service: 'Umbrella Enforcement',
   mode: umbrellaMode(c.env.UMBRELLA_ENFORCEMENT),
   governance: governanceEnvelope(umbrellaMode(c.env.UMBRELLA_ENFORCEMENT)),
 }));
-app.get('/api/phase/status', (c) => c.json({
+router.get('/phase/status', (c) => c.json({
   ok: true,
   service: 'Portal-OS',
   phase: c.env.PORTAL_OS_PHASE ?? '11',
 }));
-app.get('/api/planetary/mode', async (c) => c.json({
+router.get('/planetary/mode', async (c) => c.json({
   mode: await planetaryMode(c.env),
 }));
-app.post('/api/planetary/toggle', async (c) => {
+router.post('/planetary/toggle', async (c) => {
   const mode = (await planetaryMode(c.env)) === 'active' ? 'single' : 'active';
   if (c.env.MAXOS_STATE) await c.env.MAXOS_STATE.put(PLANETARY_MODE_KEY, mode);
   return c.json({ mode });
 });
-app.get('/api/version/read', (c) => c.json({
+router.get('/version/read', (c) => c.json({
   ok: true,
   service: 'MAX-OS-1',
   version: c.env.MAX_OS_VERSION ?? '1',
 }));
+
+app.route('/api', router);
 
 app.get('/kernel', (c) => c.json({ ok: true, lane: 'kernel', lanes: ['identity', 'windows', 'sim', 'umbrella'] }));
 app.post('/kernel', async (c) => dispatchRequest(c));
