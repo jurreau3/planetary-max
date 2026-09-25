@@ -10,6 +10,9 @@ import { beeSimEnvelope } from './planetary';
 import { governanceEnvelope, umbrellaMode } from './governance';
 import { windowsEnvelope } from './types';
 
+import { verifyIdentityToken } from './jwt';
+import { requirePermission } from './permissions';
+
 // ------------------------------------------------------------
 // App + Router
 // ------------------------------------------------------------
@@ -38,9 +41,17 @@ app.get('/health', (c) => c.json({ ok: true, service: 'planetary-max' }));
 // ------------------------------------------------------------
 // Identity / Umbrella / SIM / Windows
 // ------------------------------------------------------------
-app.get('/identity', (c) => {
+app.get('/identity', async (c) => {
   const token = bearer(c.req.header('Authorization'));
-  return c.json(identityEnvelope(token, c.env));
+  const identity = await verifyIdentityToken(token, c.env);
+
+  return c.json({
+    ok: identity.ok,
+    subject: identity.ok ? identity.subject : null,
+    permissions: identity.ok ? identity.permissions : [],
+    roles: identity.ok ? identity.roles : [],
+    error: identity.ok ? null : identity,
+  });
 });
 
 app.get('/umbrella', (c) => {
@@ -164,6 +175,12 @@ router.get('/introspection/windows/timeline', async (c) => {
 // Window Manager Interactive (Unified DO)
 // ------------------------------------------------------------
 router.post('/windows/open', async (c) => {
+  const token = bearer(c.req.header('Authorization'));
+  const identity = await verifyIdentityToken(token, c.env);
+
+  const check = requirePermission(identity, 'windows:open');
+  if (!check.ok) return error(403, check.code, check.message);
+
   const stub = kernelStub(c.env);
   const body = await c.req.json();
   const res = await stub.fetch(new Request('https://portal/api/windows/open', {
@@ -174,6 +191,12 @@ router.post('/windows/open', async (c) => {
 });
 
 router.post('/windows/close', async (c) => {
+  const token = bearer(c.req.header('Authorization'));
+  const identity = await verifyIdentityToken(token, c.env);
+
+  const check = requirePermission(identity, 'windows:close');
+  if (!check.ok) return error(403, check.code, check.message);
+
   const stub = kernelStub(c.env);
   const body = await c.req.json();
   const res = await stub.fetch(new Request('https://portal/api/windows/close', {
@@ -187,6 +210,12 @@ router.post('/windows/close', async (c) => {
 // Portal Surface (Unified DO)
 // ------------------------------------------------------------
 router.post('/portal/open', async (c) => {
+  const token = bearer(c.req.header('Authorization'));
+  const identity = await verifyIdentityToken(token, c.env);
+
+  const check = requirePermission(identity, 'portal:open');
+  if (!check.ok) return error(403, check.code, check.message);
+
   const stub = kernelStub(c.env);
   const body = await c.req.json();
   const res = await stub.fetch(new Request('https://portal/api/portal/open', {
@@ -246,11 +275,14 @@ async function dispatchRequest(c: any): Promise<Response> {
     return error(400, 'INVALID_LANE', 'lane must be identity, windows, sim, or umbrella');
   }
 
+  const token = bearer(c.req.header('Authorization'));
+  const identity = await verifyIdentityToken(token, c.env);
+
   const envelope: KernelEnvelope = {
     id: typeof payload.id === 'string' ? payload.id : crypto.randomUUID(),
     lane,
     payload,
-    identity: bearer(c.req.header('Authorization')) ?? 'anonymous',
+    identity: identity.ok ? identity.subject : 'anonymous',
   };
 
   try {
