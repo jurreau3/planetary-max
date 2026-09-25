@@ -1,5 +1,5 @@
-
 import { jwtVerify } from 'jose/webcrypto';
+
 export async function verifyIdentityJwt(
   token: string,
   env: {
