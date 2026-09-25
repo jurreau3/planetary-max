@@ -2,14 +2,60 @@ import { jwtVerify, JWTPayload } from 'jose';
 import type { Bindings } from './contracts';
 
 export type IdentityResult =
-  | { ok: true; subject: string; payload: JWTPayload }
-  | { ok: false; code: string; message: string };
+  | {
+      ok: true;
+      subject: string;
+      payload: JWTPayload;
+      permissions: string[];
+      roles: string[];
+    }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+    };
 
 const DEFAULT_ISSUER = 'portal-login';
 const DEFAULT_AUDIENCE = 'planetary-max';
 
 function hmacKey(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
+}
+
+function extractPermissions(payload: JWTPayload): string[] {
+  const raw =
+    payload.permissions ??
+    payload.perms ??
+    payload.scope ??
+    payload['portal:permissions'];
+
+  if (typeof raw === 'string') {
+    return raw.split(/\s+/).filter(Boolean);
+  }
+
+  if (Array.isArray(raw)) {
+    return raw
+      .map((v) => (typeof v === 'string' ? v : ''))
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function extractRoles(payload: JWTPayload): string[] {
+  const raw = payload.roles ?? payload['portal:roles'];
+
+  if (typeof raw === 'string') {
+    return raw.split(/\s+/).filter(Boolean);
+  }
+
+  if (Array.isArray(raw)) {
+    return raw
+      .map((v) => (typeof v === 'string' ? v : ''))
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 export async function verifyIdentityToken(
@@ -51,6 +97,8 @@ export async function verifyIdentityToken(
       ok: true,
       subject,
       payload,
+      permissions: extractPermissions(payload),
+      roles: extractRoles(payload),
     };
   } catch (error: any) {
     return {
