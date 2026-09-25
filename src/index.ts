@@ -277,7 +277,7 @@ export { new_sqlite_classes } from './do/new_sqlite_classes';
 
 // ------------------------------------------------------------
 // Module Worker export (required for DO support)
-—------------------------------------------------------------
+// ------------------------------------------------------------
 export default {
   fetch: app.fetch,
 };
