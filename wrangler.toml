@@ -3,9 +3,6 @@ main = "src/index.ts"
 compatibility_date = "2026-09-25"
 compatibility_flags = ["nodejs_compat"]
 
-# ------------------------------------------------------------
-# Environment Variables
-# ------------------------------------------------------------
 [vars]
 PORTAL_OS_PHASE = "11"
 PLANETARY_MODE = "single"
@@ -14,19 +11,13 @@ IDENTITY_JWT_ISSUER = "portal-login"
 IDENTITY_JWT_AUDIENCE = "planetary-max"
 MAX_OS_VERSION = "1"
 
-# ------------------------------------------------------------
-# KV Namespaces (must be an array)
-# ------------------------------------------------------------
 kv_namespaces = [
   { binding = "MAXOS_STATE", id = "d2f70f669d0a4a499e7262a7cc2a56d2" }
 ]
 
-# ------------------------------------------------------------
-# Durable Objects (bindings + exports required)
-# ------------------------------------------------------------
 [durable_objects]
 bindings = [
-  { name = "PORTAL_KERNEL", class_name = "PortalKernel" },
+  { name = "PortalKernel", class_name = "PortalKernel" },
   { name = "new_sqlite_classes", class_name = "new_sqlite_classes" }
 ]
 
@@ -38,18 +29,11 @@ storage = "sqlite"
 type = "durable-object"
 storage = "sqlite"
 
-# ------------------------------------------------------------
-# Placement
-# ------------------------------------------------------------
 [placement]
 mode = "smart"
 
-# ------------------------------------------------------------
-# Observability (must be objects)
-# ------------------------------------------------------------
 [observability]
 enabled = true
 
 [observability.logs]
 enabled = true
-level = "debug"
