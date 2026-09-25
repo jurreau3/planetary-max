@@ -266,10 +266,6 @@ function error(status: number, code: string, message: string): Response {
 }
 
 // ------------------------------------------------------------
-// FINAL — ONLY ONE DEFAULT EXPORT
-//
-------------------------------------------------------------
-// ------------------------------------------------------------
 // Cloudflare Durable Object Exports (required)
 // ------------------------------------------------------------
 export * from './do';
@@ -290,5 +286,4 @@ export default {
     return app.fetch(request, env, ctx);
   }
 };
-
 
