@@ -1,10 +1,12 @@
 export class new_sqlite_classes {
-  constructor(
-    private readonly state: DurableObjectState,
-    private readonly env: unknown,
-  ) {}
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
 
-  async fetch(_request: Request): Promise<Response> {
-    return new Response('SQLite DO OK');
+  async fetch(request) {
+    return new Response("new_sqlite_classes OK");
   }
 }
+
+
