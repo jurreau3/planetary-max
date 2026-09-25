@@ -1,38 +1,102 @@
-import { enforceUmbrella } from './umbrella-enforce';
+import { jwtVerify, JWTPayload } from 'jose';
+import type { Bindings } from './contracts';
 
-async function dispatchRequest(c) {
-  let body;
+export type IdentityResult =
+  | {
+      ok: true;
+      subject: string;
+      payload: JWTPayload;
+      permissions: string[];
+      roles: string[];
+    }
+  | { ok: false; code: string; message: string };
+
+const DEFAULT_ISSUER = 'portal-login';
+const DEFAULT_AUDIENCE = 'planetary-max';
+
+function hmacKey(secret: string): Uint8Array {
+  return new TextEncoder().encode(secret);
+}
+
+function extractPermissions(payload: JWTPayload): string[] {
+  const raw =
+    payload.permissions ??
+    payload.perms ??
+    payload.scope ??
+    payload['portal:permissions'];
+
+  if (typeof raw === 'string') {
+    return raw.split(/\s+/).filter(Boolean);
+  }
+
+  if (Array.isArray(raw)) {
+    return raw
+      .map((v) => (typeof v === 'string' ? v : ''))
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function extractRoles(payload: JWTPayload): string[] {
+  const raw = payload.roles ?? payload['portal:roles'];
+
+  if (typeof raw === 'string') {
+    return raw.split(/\s+/).filter(Boolean);
+  }
+
+  if (Array.isArray(raw)) {
+    return raw
+      .map((v) => (typeof v === 'string' ? v : ''))
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+export async function verifyIdentityToken(
+  token: string | undefined,
+  env: Bindings,
+): Promise<IdentityResult> {
+  if (!token) {
+    return {
+      ok: false,
+      code: 'MISSING_TOKEN',
+      message: 'Authorization token is required',
+    };
+  }
+
+  const secret = env.IDENTITY_JWT_SECRET;
+  if (!secret) {
+    return {
+      ok: false,
+      code: 'MISSING_SECRET',
+      message: 'IDENTITY_JWT_SECRET is not configured',
+    };
+  }
+
+  const issuer = env.IDENTITY_JWT_ISSUER ?? DEFAULT_ISSUER;
+  const audience = env.IDENTITY_JWT_AUDIENCE ?? DEFAULT_AUDIENCE;
+
   try {
-    body = await c.req.json();
-  } catch {
-    return error(400, 'INVALID_JSON', 'Request body must be JSON');
-  }
+    const key = hmacKey(secret);
+    const { payload } = await jwtVerify(token, key, { issuer, audience });
 
-  const payload = asJsonObject(body);
-  const lane = payload.lane;
+    const subject =
+      typeof payload.sub === 'string' ? payload.sub : 'unknown';
 
-  if (!isLane(lane)) {
-    return error(400, 'INVALID_LANE', 'lane must be identity, windows, sim, or umbrella');
-  }
-
-  const rawBearer = bearer(c.req.header('Authorization'));
-
-  // Umbrella enforcement
-  const auth = await enforceUmbrella(rawBearer, c.env, lane);
-  if (!auth.ok) {
-    return error(403, auth.code, auth.message);
-  }
-
-  const envelope: KernelEnvelope = {
-    id: typeof payload.id === 'string' ? payload.id : crypto.randomUUID(),
-    lane,
-    payload,
-    identity: auth.identity,
-  };
-
-  try {
-    return await callKernel(c.env, envelope);
-  } catch {
-    return error(503, 'KERNEL_UNAVAILABLE', 'PortalKernel is unavailable');
+    return {
+      ok: true,
+      subject,
+      payload,
+      permissions: extractPermissions(payload),
+      roles: extractRoles(payload),
+    };
+  } catch (error: any) {
+    return {
+      ok: false,
+      code: 'INVALID_TOKEN',
+      message: error?.message ?? 'Token verification failed',
+    };
   }
 }
