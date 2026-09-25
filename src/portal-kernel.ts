@@ -1,5 +1,5 @@
+import { allowEnvelope, umbrellaMode } from '../../governance';
 import type { Bindings, KernelEnvelope, KernelResult } from '../contracts';
-import { allowEnvelope, umbrellaMode } from '../governance';
 import { asJsonObject } from '../contracts';
 
 // ------------------------------------------------------------
@@ -258,6 +258,9 @@ function isEnvelope(value: unknown): value is KernelEnvelope {
   );
 }
 
+// ------------------------------------------------------------
+// Module Worker wrapper (required for Durable Objects)
+// ------------------------------------------------------------
 export default {
   fetch(request: Request, env: Bindings, ctx: ExecutionContext) {
     const obj = new PortalKernel(ctx as any, env);
