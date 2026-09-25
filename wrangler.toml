@@ -1,37 +1,29 @@
 name = "planetary-max"
 main = "src/index.ts"
-compatibility_date = "2024-09-01"
+compatibility_date = "2026-09-25"
+compatibility_flags = ["nodejs_compat"]
 
-# -----------------------------------------------------
-# Durable Object bindings
-# -----------------------------------------------------
+[vars]
+PORTAL_OS_PHASE = "11"
+PLANETARY_MODE   = "single"
+UMBRELLA_ENFORCEMENT = "strict"
+IDENTITY_JWT_ISSUER   = "portal-login"
+IDENTITY_JWT_AUDIENCE = "planetary-max"
+MAX_OS_VERSION        = "1"
+
+[kv_namespaces]
+bindings = [
+  { binding = "MAXOS_STATE", id = "d2f70f669d0a4a499e7262a7cc2a56d2" }
+]
+
 [durable_objects]
 bindings = [
   { name = "PORTAL_KERNEL", class_name = "PortalKernel" },
   { name = "new_sqlite_classes", class_name = "new_sqlite_classes" }
 ]
 
-# -----------------------------------------------------
-# KV Namespaces
-# -----------------------------------------------------
-[[kv_namespaces]]
-binding = "MAXOS_STATE"
-id = "d2f70f669d0a4a499e7262a7cc2a56d2"
+[placement]
+mode = "smart"
 
-# -----------------------------------------------------
-# Environment Variables
-# -----------------------------------------------------
-[vars]
-PORTAL_OS_PHASE = "11"
-PLANETARY_MODE = "single"
-UMBRELLA_ENFORCEMENT = "strict"
-IDENTITY_JWT_ISSUER = "portal-login"
-IDENTITY_JWT_AUDIENCE = "planetary-max"
-MAX_OS_VERSION = "1"
-
-# -----------------------------------------------------
-# Durable Object migration
-# -----------------------------------------------------
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["PortalKernel", "new_sqlite_classes"]
+[observability]
+logs = "debug"
