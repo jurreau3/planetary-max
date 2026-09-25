@@ -1,48 +1,38 @@
-import type { Bindings } from './contracts';
-import { verifyIdentityJwt } from './jwt';
+import { enforceUmbrella } from './umbrella-enforce';
 
-/**
- * identityEnvelope
- *
- * Produces a coherent identity + session object from a Bearer JWT.
- * - anonymous → no token
- * - invalid   → token rejected (bad signature, issuer, audience, expired)
- * - ok:true   → validated identity + session payload
- */
-export async function identityEnvelope(
-  bearer: string | undefined,
-  env: Bindings
-) {
-  // No Authorization header → anonymous identity
-  if (!bearer) {
-    return {
-      ok: false,
-      identity: 'anonymous',
-      session: null,
-    };
+async function dispatchRequest(c) {
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    return error(400, 'INVALID_JSON', 'Request body must be JSON');
   }
 
-  try {
-    // Validate JWT using issuer, audience, and HMAC secret
-    const payload = await verifyIdentityJwt(bearer, env);
+  const payload = asJsonObject(body);
+  const lane = payload.lane;
 
-    return {
-      ok: true,
-      identity: payload.sub ?? 'unknown',
-      session: {
-        sub: payload.sub,
-        email: payload.email,
-        roles: payload.roles ?? [],
-        issuedAt: payload.iat,
-        expiresAt: payload.exp,
-      },
-    };
+  if (!isLane(lane)) {
+    return error(400, 'INVALID_LANE', 'lane must be identity, windows, sim, or umbrella');
+  }
+
+  const rawBearer = bearer(c.req.header('Authorization'));
+
+  // Umbrella enforcement
+  const auth = await enforceUmbrella(rawBearer, c.env, lane);
+  if (!auth.ok) {
+    return error(403, auth.code, auth.message);
+  }
+
+  const envelope: KernelEnvelope = {
+    id: typeof payload.id === 'string' ? payload.id : crypto.randomUUID(),
+    lane,
+    payload,
+    identity: auth.identity,
+  };
+
+  try {
+    return await callKernel(c.env, envelope);
   } catch {
-    // Token present but invalid → identity: invalid
-    return {
-      ok: false,
-      identity: 'invalid',
-      session: null,
-    };
+    return error(503, 'KERNEL_UNAVAILABLE', 'PortalKernel is unavailable');
   }
 }
