@@ -270,8 +270,7 @@ function error(status: number, code: string, message: string): Response {
 // ------------------------------------------------------------
 // REQUIRED Durable Object Exports
 // ------------------------------------------------------------
-export { PortalKernel } from './do/PortalKernel';
-export { new_sqlite_classes } from './do/new_sqlite_classes';
+
 
 // ------------------------------------------------------------
 // FINAL — ONLY ONE DEFAULT EXPORT
