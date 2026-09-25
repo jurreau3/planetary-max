@@ -1,18 +1,21 @@
-import type { Bindings, KernelEnvelope, KernelResult } from './contracts';
-import { allowEnvelope, umbrellaMode } from './governance';
-import { asJsonObject } from './contracts';
+import type { Bindings, KernelEnvelope, KernelResult } from '../contracts';
+import { allowEnvelope, umbrellaMode } from '../governance';
+import { asJsonObject } from '../contracts';
 
 // ------------------------------------------------------------
-// PortalKernel Durable Object — Max‑OS Interactive Edition
+// PortalKernel Durable Object — Unified Max‑OS Interactive Kernel
 // ------------------------------------------------------------
 export class PortalKernel {
   constructor(
     private readonly state: DurableObjectState,
-    private readonly env: Pick<Bindings, 'PORTAL_OS_PHASE' | 'UMBRELLA_ENFORCEMENT'>
+    private readonly env: Pick<
+      Bindings,
+      'PORTAL_OS_PHASE' | 'UMBRELLA_ENFORCEMENT'
+    >
   ) {}
 
   // ------------------------------------------------------------
-  // MAX‑OS Interactive State
+  // MAX‑OS Interactive State (Windows + Portal)
   // ------------------------------------------------------------
   private interactive = {
     windows: [] as Array<{
@@ -89,7 +92,7 @@ export class PortalKernel {
     }
 
     // ------------------------------
-    // Kernel Envelope API (existing)
+    // Kernel Envelope API
     // ------------------------------
     if (request.method !== 'POST' || url.pathname !== '/api/kernel/message') {
       return Response.json({
@@ -220,9 +223,12 @@ export class PortalKernel {
 }
 
 // ------------------------------------------------------------
-// Existing kernel dispatch logic (rewritten)
+// Envelope Dispatch Logic
 // ------------------------------------------------------------
-async function dispatch(envelope: KernelEnvelope, storage: DurableObjectStorage): Promise<Record<string, unknown>> {
+async function dispatch(
+  envelope: KernelEnvelope,
+  storage: DurableObjectStorage
+): Promise<Record<string, unknown>> {
   switch (envelope.lane) {
     case 'identity':
       return { surface: 'identity', authenticated: envelope.identity !== 'anonymous' };
@@ -252,4 +258,9 @@ function isEnvelope(value: unknown): value is KernelEnvelope {
   );
 }
 
-export default PortalKernel;
+export default {
+  fetch(request: Request, env: Bindings, ctx: ExecutionContext) {
+    const obj = new PortalKernel(ctx as any, env);
+    return obj.fetch(request);
+  }
+};
