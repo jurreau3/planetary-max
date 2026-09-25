@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import type { Bindings, KernelEnvelope, KernelLane, JsonObject } from './contracts';
 import { asJsonObject } from './contracts';
 import { identityEnvelope } from './identity';
@@ -8,6 +9,12 @@ import { governanceEnvelope, umbrellaMode } from './governance';
 import { windowsEnvelope } from './types';
 
 const app = new Hono<{ Bindings: Bindings }>();
+
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+}));
 
 app.get('/', (c) => c.json({ ok: true, service: 'planetary-max', phase: c.env.PORTAL_OS_PHASE ?? '11' }));
 app.get('/health', (c) => c.json({ ok: true, service: 'planetary-max' }));

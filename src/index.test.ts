@@ -36,6 +36,27 @@ describe('Phase-11 stable worker surfaces', () => {
     expect(await response.json()).toEqual({ ok: true, service: 'planetary-max' });
   });
 
+  it('allows cross-origin requests and handles preflight requests', async () => {
+    const response = await app.request('/health', {
+      headers: { Origin: 'https://dashboard.example.com' },
+    }, bindings as any);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+
+    const preflight = await app.request('/api/kernel/message', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://dashboard.example.com',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type, Authorization',
+      },
+    }, bindings as any);
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(preflight.headers.get('Access-Control-Allow-Methods')).toContain('POST');
+    expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain('Content-Type');
+    expect(preflight.headers.get('Access-Control-Allow-Headers')).toContain('Authorization');
+  });
+
   it('rejects malformed JSON before it reaches the kernel bridge', async () => {
     const response = await app.request(
       '/api/kernel/message',
