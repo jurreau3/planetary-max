@@ -1,4 +1,5 @@
-
+export class PortalKernel {
+}
 export class PortalKernel {
   constructor(state, env) {
     this.state = state;
