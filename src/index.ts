@@ -269,7 +269,9 @@ function error(status: number, code: string, message: string): Response {
   return Response.json({ ok: false, error: { code, message } }, { status });
 }
 
-export { app };
-export { PortalKernel } from './do/PortalKernel';
-export { new_sqlite_classes } from './do/new_sqlite_classes';
-export default app;
+// ------------------------------------------------------------
+// Module Worker export (required for DO support)
+// ------------------------------------------------------------
+export default {
+  fetch: app.fetch,
+};
