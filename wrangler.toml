@@ -34,6 +34,8 @@ mode = "smart"
 
 [observability]
 enabled = true
+[vars]
+IDENTITY_JWT_SECRET = "your-hmac-secret"
 
 [observability.logs]
 enabled = true
