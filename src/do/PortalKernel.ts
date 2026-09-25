@@ -2,15 +2,20 @@ export class PortalKernel {
   constructor(state, env) {
     this.state = state;
     this.env = env;
+
+    // Ensure kernel state is initialized before any requests are handled
+    this.state.blockConcurrencyWhile(async () => {
+      const stored = (await this.state.storage.get("kernel")) ?? {};
+      this.kernel = normalize(stored);
+    });
   }
 
   async fetch(request) {
     const url = new URL(request.url);
-    const path = url.pathname.replace(/^https?:\/\/[^/]+/, "");
+    const path = url.pathname;
 
-    // Load or initialize kernel state
-    const stored = (await this.state.storage.get("kernel")) ?? {};
-    const kernel = normalize(stored);
+    // Always work against in-memory kernel; persist only after mutations
+    const kernel = this.kernel ?? normalize({});
 
     // -----------------------------
     // WINDOWS — INTROSPECTION
@@ -35,7 +40,7 @@ export class PortalKernel {
     // WINDOWS — INTERACTIVE
     // -----------------------------
     if (path === "/api/windows/open" && request.method === "POST") {
-      const body = await request.json().catch(() => ({}));
+      const body = await safeJson(request);
       const id = body.id ?? crypto.randomUUID();
       const type = body.type ?? "window";
       const payload = body.payload ?? {};
@@ -53,12 +58,12 @@ export class PortalKernel {
         payload
       });
 
-      await this.state.storage.put("kernel", kernel);
+      await this.persist(kernel);
       return Response.json({ ok: true, windows: kernel.windows });
     }
 
     if (path === "/api/windows/close" && request.method === "POST") {
-      const body = await request.json().catch(() => ({}));
+      const body = await safeJson(request);
       const id = body.id;
 
       if (!id) {
@@ -81,7 +86,7 @@ export class PortalKernel {
         ts: Date.now()
       });
 
-      await this.state.storage.put("kernel", kernel);
+      await this.persist(kernel);
       return Response.json({ ok: true, windows: kernel.windows });
     }
 
@@ -89,7 +94,7 @@ export class PortalKernel {
     // PORTAL SURFACE
     // -----------------------------
     if (path === "/api/portal/open" && request.method === "POST") {
-      const body = await request.json().catch(() => ({}));
+      const body = await safeJson(request);
       const id = body.id ?? crypto.randomUUID();
       const payload = body.payload ?? {};
 
@@ -106,7 +111,7 @@ export class PortalKernel {
         payload
       });
 
-      await this.state.storage.put("kernel", kernel);
+      await this.persist(kernel);
       return Response.json({ ok: true, portal: kernel.portal });
     }
 
@@ -130,18 +135,35 @@ export class PortalKernel {
       timeline: kernel.timeline
     });
   }
+
+  async persist(kernel) {
+    this.kernel = normalize(kernel);
+    await this.state.storage.put("kernel", this.kernel);
+  }
+}
+
+async function safeJson(request) {
+  try {
+    const body = await request.json();
+    return typeof body === "object" && body !== null ? body : {};
+  } catch {
+    return {};
+  }
 }
 
 function normalize(stored) {
+  const windows = stored?.windows ?? {};
+  const portal = stored?.portal ?? {};
+
   return {
     windows: {
-      layout: stored?.windows?.layout ?? [],
-      focus: stored?.windows?.focus ?? null
+      layout: Array.isArray(windows.layout) ? windows.layout : [],
+      focus: windows.focus ?? null
     },
     portal: {
-      state: stored?.portal?.state ?? {},
-      timeline: stored?.portal?.timeline ?? []
+      state: typeof portal.state === "object" && portal.state !== null ? portal.state : {},
+      timeline: Array.isArray(portal.timeline) ? portal.timeline : []
     },
-    timeline: stored?.timeline ?? []
+    timeline: Array.isArray(stored?.timeline) ? stored.timeline : []
   };
 }
