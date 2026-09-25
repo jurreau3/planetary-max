@@ -1,50 +1,52 @@
-import type { Bindings } from './contracts';
-import type { JWTPayload } from 'jose';
-import { verifyIdentityToken } from './jwt';
+//
+// Portal‑OS Identity Substrate
+// JWT envelope + auth context
+//
+
+import type { Bindings } from "./contracts";
 
 export type IdentityEnvelope = {
   ok: boolean;
-  subject: string | null;
-  permissions: string[];
-  roles: string[];
-  claims: JWTPayload | null;
-  error?: {
-    code: string;
-    message: string;
-  };
+  subject?: string;
+  roles?: string[];
+  claims?: Record<string, unknown>;
+};
+
+export type AuthContext = {
+  identity: IdentityEnvelope;
 };
 
 /**
  * identityEnvelope
  *
- * Builds a normalized identity view for the OS from a bearer token + env.
- * Used by the /identity route and can be reused by lanes that need identity context.
+ * Normalizes the raw authorization token into a stable identity envelope.
+ * This is intentionally minimal; real JWT verification can be plugged in later.
  */
 export async function identityEnvelope(
   token: string | undefined,
   env: Bindings,
 ): Promise<IdentityEnvelope> {
-  const result = await verifyIdentityToken(token, env);
-
-  if (!result.ok) {
-    return {
-      ok: false,
-      subject: null,
-      permissions: [],
-      roles: [],
-      claims: null,
-      error: {
-        code: result.code,
-        message: result.message,
-      },
-    };
+  if (!token) {
+    return { ok: false };
   }
 
+  // Placeholder: treat any non-empty token as valid.
+  // In a real system, you would verify the JWT here using env secrets.
   return {
     ok: true,
-    subject: result.subject,
-    permissions: result.permissions,
-    roles: result.roles,
-    claims: result.payload,
+    subject: token,
+    roles: [],
+    claims: {},
   };
+}
+
+/**
+ * requireAuth
+ *
+ * Throws if identity is not valid. Used by introspection and governance layers.
+ */
+export function requireAuth(ctx: AuthContext): void {
+  if (!ctx.identity.ok) {
+    throw new Error("AUTH_REQUIRED");
+  }
 }
