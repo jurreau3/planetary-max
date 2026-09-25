@@ -1,5 +1,4 @@
 import type { IdentityResult } from './jwt';
-
 export type PermissionCheck =
   | { ok: true }
   | { ok: false; code: string; message: string };
