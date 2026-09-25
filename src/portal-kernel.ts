@@ -1,4 +1,4 @@
-import { allowEnvelope, umbrellaMode } from '../governance';
+import { allowEnvelope, umbrellaMode } from '../../governance';
 import type { Bindings, KernelEnvelope, KernelResult } from '../contracts';
 import { asJsonObject } from '../contracts';
 
