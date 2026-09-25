@@ -1,55 +1,48 @@
-export type IdentityEnvelope = {
-  ok: true;
-  issuer: string;
-  audience: string;
-  id: string;
-  signature: string;
-};
+import type { Bindings } from './contracts';
+import { verifyIdentityJwt } from './jwt';
 
-const DEFAULT_ISSUER = 'portal-login';
-const DEFAULT_AUDIENCE = 'planetary-max';
-
-export function identityEnvelope(
-  token: string | undefined,
-  env: { IDENTITY_JWT_ISSUER?: string; IDENTITY_JWT_AUDIENCE?: string },
-): IdentityEnvelope {
-  const issuer = env.IDENTITY_JWT_ISSUER ?? DEFAULT_ISSUER;
-  const audience = env.IDENTITY_JWT_AUDIENCE ?? DEFAULT_AUDIENCE;
-  const parts = token?.split('.') ?? [];
-  let claims: Record<string, unknown> = {};
-  if (parts.length === 3) {
-    try {
-      const encoded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-      const decoded = atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '='));
-      const parsed: unknown = JSON.parse(decoded);
-      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-        claims = parsed as Record<string, unknown>;
-      }
-    } catch {
-      claims = {};
-    }
+/**
+ * identityEnvelope
+ *
+ * Produces a coherent identity + session object from a Bearer JWT.
+ * - anonymous → no token
+ * - invalid   → token rejected (bad signature, issuer, audience, expired)
+ * - ok:true   → validated identity + session payload
+ */
+export async function identityEnvelope(
+  bearer: string | undefined,
+  env: Bindings
+) {
+  // No Authorization header → anonymous identity
+  if (!bearer) {
+    return {
+      ok: false,
+      identity: 'anonymous',
+      session: null,
+    };
   }
-  const id = typeof claims.sub === 'string' && claims.sub.trim() !== ''
-    ? claims.sub
-    : 'anonymous';
-  const signature = parts.length === 3 && parts[2] !== '' ? parts[2] : 'unsigned';
-  return { ok: true, issuer, audience, id, signature };
-}
 
-export function validateIdentityClaims(
-  token: string | undefined,
-  env: { IDENTITY_JWT_ISSUER?: string; IDENTITY_JWT_AUDIENCE?: string },
-): boolean {
-  if (!token) return false;
-  const parts = token.split('.');
-  if (parts.length !== 3 || parts[2] === '') return false;
   try {
-    const encoded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const claims = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '='))) as Record<string, unknown>;
-    const issuer = env.IDENTITY_JWT_ISSUER ?? DEFAULT_ISSUER;
-    const audience = env.IDENTITY_JWT_AUDIENCE ?? DEFAULT_AUDIENCE;
-    return claims.iss === issuer && claims.aud === audience;
+    // Validate JWT using issuer, audience, and HMAC secret
+    const payload = await verifyIdentityJwt(bearer, env);
+
+    return {
+      ok: true,
+      identity: payload.sub ?? 'unknown',
+      session: {
+        sub: payload.sub,
+        email: payload.email,
+        roles: payload.roles ?? [],
+        issuedAt: payload.iat,
+        expiresAt: payload.exp,
+      },
+    };
   } catch {
-    return false;
+    // Token present but invalid → identity: invalid
+    return {
+      ok: false,
+      identity: 'invalid',
+      session: null,
+    };
   }
 }
