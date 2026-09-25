@@ -267,7 +267,9 @@ function error(status: number, code: string, message: string): Response {
 
 // ------------------------------------------------------------
 // FINAL — ONLY ONE DEFAULT EXPORT
-// ------------------------------------------------------------
+//
+------------------------------------------------------------
+export * from './do';
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
