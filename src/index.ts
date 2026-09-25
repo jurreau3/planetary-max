@@ -30,7 +30,7 @@ app.get('/', (c) =>
 app.get('/health', (c) => c.json({ ok: true, service: 'planetary-max' }));
 
 // ------------------------------------------------------------
-// Identity / Umbrella / SIM / Windows (static surfaces)
+// Identity / Umbrella / SIM / Windows
 // ------------------------------------------------------------
 app.get('/identity', (c) =>
   c.json(identityEnvelope(bearer(c.req.header('Authorization')), c.env)),
@@ -210,7 +210,7 @@ router.get('/portal/timeline', async (c) => {
 app.route('/api', router);
 
 // ------------------------------------------------------------
-// Kernel bridge surfaces
+// Kernel bridge surfaces (static)
 // ------------------------------------------------------------
 app.get('/kernel', (c) =>
   c.json({ ok: true, lane: 'kernel', lanes: ['identity', 'windows', 'sim', 'umbrella'] }),
@@ -276,33 +276,20 @@ export { PortalKernel } from './do/PortalKernel';
 export { new_sqlite_classes } from './do/new_sqlite_classes';
 
 // ------------------------------------------------------------
-// Module Worker export (required for DO support)
+// FINAL — ONLY ONE DEFAULT EXPORT
 // ------------------------------------------------------------
 export default {
-  fetch: app.fetch,
-  };
-export default {
-  async fetch(request, env) {
-    const id = env.PORTAL_KERNEL.newUniqueId();
-    const stub = env.PORTAL_KERNEL.get(id);
-    return stub.fetch(request);
-  }
-};
-
-export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // PortalKernel DO route
     if (url.pathname === "/kernel") {
       const id = env.PORTAL_KERNEL.idFromName("portal-kernel");
       const stub = env.PORTAL_KERNEL.get(id);
       return stub.fetch(request);
     }
 
-    return new Response(JSON.stringify({
-      ok: true,
-      lane: "kernel",
-      lanes: ["identity", "windows", "sim", "umbrella"]
-    }), { status: 200 });
+    // Everything else → Hono
+    return app.fetch(request, env, ctx);
   }
 };
