@@ -270,8 +270,14 @@ function error(status: number, code: string, message: string): Response {
 }
 
 // ------------------------------------------------------------
-// Module Worker export (required for DO support)
+// REQUIRED Durable Object Exports
 // ------------------------------------------------------------
+export { PortalKernel } from './do/PortalKernel';
+export { new_sqlite_classes } from './do/new_sqlite_classes';
+
+// ------------------------------------------------------------
+// Module Worker export (required for DO support)
+—------------------------------------------------------------
 export default {
   fetch: app.fetch,
 };
