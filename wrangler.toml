@@ -15,17 +15,12 @@ IDENTITY_JWT_SECRET = "your-hmac-secret"
 kv_namespaces = [
   { binding = "MAXOS_STATE", id = "d2f70f669d0a4a499e7262a7cc2a56d2" }
 ]
+
 [durable_objects]
 bindings = [
   { name = "PORTAL_KERNEL", class_name = "PortalKernel" },
   { name = "new_sqlite_classes", class_name = "new_sqlite_classes" }
 ]
-
-[[migrations]]
-tag = "v1"
-new_classes = ["PortalKernel"]
-
-
 
 [exports.PortalKernel]
 type = "durable-object"
