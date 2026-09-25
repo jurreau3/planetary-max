@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { asJsonObject } from './contracts';
+
 import type { Bindings, KernelEnvelope, KernelLane } from './contracts';
+import { asJsonObject } from './contracts';
+
 import { identityEnvelope } from './identity';
 import { callKernel } from './kernel-bridge';
 import { beeSimEnvelope } from './planetary';
