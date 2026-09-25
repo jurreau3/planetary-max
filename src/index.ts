@@ -1,60 +1,64 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { Bindings, KernelEnvelope, KernelLane } from './contracts';
 import { asJsonObject } from './contracts';
+import type { Bindings, KernelEnvelope, KernelLane } from './contracts';
 import { identityEnvelope } from './identity';
 import { callKernel } from './kernel-bridge';
 import { beeSimEnvelope } from './planetary';
 import { governanceEnvelope, umbrellaMode } from './governance';
 import { windowsEnvelope } from './types';
 
+// ------------------------------------------------------------
+// App + Router
+// ------------------------------------------------------------
 const app = new Hono<{ Bindings: Bindings }>();
 const router = new Hono<{ Bindings: Bindings }>();
-const PLANETARY_MODE_KEY = 'planetary:mode';
 
-app.use(
-  '*',
-  cors({
-    origin: '*',
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
-  }),
-);
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // ------------------------------------------------------------
 // Root + health
 // ------------------------------------------------------------
-app.get('/', (c) =>
-  c.json({ ok: true, service: 'planetary-max', phase: c.env.PORTAL_OS_PHASE ?? '11' }),
-);
+app.get('/', (c) => {
+  return c.json({
+    ok: true,
+    service: 'planetary-max',
+    phase: c.env.PORTAL_OS_PHASE ?? '11',
+  });
+});
+
 app.get('/health', (c) => c.json({ ok: true, service: 'planetary-max' }));
 
 // ------------------------------------------------------------
 // Identity / Umbrella / SIM / Windows
 // ------------------------------------------------------------
-app.get('/identity', (c) =>
-  c.json(identityEnvelope(bearer(c.req.header('Authorization')), c.env)),
-);
+app.get('/identity', (c) => {
+  const token = bearer(c.req.header('Authorization'));
+  return c.json(identityEnvelope(token, c.env));
+});
 
-app.get('/umbrella', (c) =>
-  c.json({
-    ok: true,
-    governance: governanceEnvelope(umbrellaMode(c.env.UMBRELLA_ENFORCEMENT)),
-  }),
-);
+app.get('/umbrella', (c) => {
+  const mode = umbrellaMode(c.env.UMBRELLA_ENFORCEMENT);
+  return c.json({ ok: true, governance: governanceEnvelope(mode) });
+});
 
-app.get('/umbrella/mode', (c) =>
-  c.json({ ok: true, mode: umbrellaMode(c.env.UMBRELLA_ENFORCEMENT) }),
-);
+app.get('/umbrella/mode', (c) => {
+  return c.json({ ok: true, mode: umbrellaMode(c.env.UMBRELLA_ENFORCEMENT) });
+});
 
 app.get('/sim', (c) => c.json(beeSimEnvelope()));
 app.get('/windows', (c) => c.json(windowsEnvelope()));
 
 // ------------------------------------------------------------
-// Kernel / state / umbrella / phase / planetary / version
+// Kernel status + state + umbrella + phase + planetary + version
 // ------------------------------------------------------------
-router.get('/kernel/status', (c) =>
-  c.json({
+router.get('/kernel/status', async (c) => {
+  const mode = await planetaryMode(c.env);
+  return c.json({
     ok: true,
     service: 'PortalKernel',
     phase: c.env.PORTAL_OS_PHASE ?? '11',
@@ -63,12 +67,12 @@ router.get('/kernel/status', (c) =>
     status: 'ready',
     tick: 0,
     signals: {},
-    kernelMode: (async () => await planetaryMode(c.env))(),
-  }),
-);
+    kernelMode: mode,
+  });
+});
 
-router.get('/state/read', (c) =>
-  c.json({
+router.get('/state/read', (c) => {
+  return c.json({
     ok: true,
     service: 'MAXOS_STATE',
     configured: Boolean(c.env.MAXOS_STATE),
@@ -78,130 +82,128 @@ router.get('/state/read', (c) =>
       planetary: { mode: c.env.PLANETARY_MODE ?? 'single' },
       phase: Number(c.env.PORTAL_OS_PHASE ?? '11'),
     },
-  }),
-);
+  });
+});
 
-router.get('/umbrella/status', (c) =>
-  c.json({
+router.get('/umbrella/status', (c) => {
+  const mode = umbrellaMode(c.env.UMBRELLA_ENFORCEMENT);
+  return c.json({
     ok: true,
     service: 'Umbrella Enforcement',
-    mode: umbrellaMode(c.env.UMBRELLA_ENFORCEMENT),
-    governance: governanceEnvelope(umbrellaMode(c.env.UMBRELLA_ENFORCEMENT)),
+    mode,
+    governance: governanceEnvelope(mode),
     rules: ['identity', 'authorization', 'state-coherence'],
     active: true,
     lastUpdate: Date.now(),
-  }),
-);
+  });
+});
 
-router.get('/phase/status', (c) =>
-  c.json({
+router.get('/phase/status', (c) => {
+  return c.json({
     ok: true,
     service: 'Portal-OS',
     phase: Number(c.env.PORTAL_OS_PHASE ?? '11'),
     coherence: 1,
     signals: {},
-  }),
-);
-
-router.get('/planetary/mode', async (c) =>
-  c.json({ mode: await planetaryMode(c.env) }),
-);
-
-router.post('/planetary/toggle', async (c) => {
-  const mode = (await planetaryMode(c.env)) === 'active' ? 'single' : 'active';
-  if (c.env.MAXOS_STATE) await c.env.MAXOS_STATE.put(PLANETARY_MODE_KEY, mode);
-  return c.json({ mode });
+  });
 });
 
-router.get('/version/read', (c) =>
-  c.json({
+router.get('/planetary/mode', async (c) => {
+  return c.json({ mode: await planetaryMode(c.env) });
+});
+
+router.post('/planetary/toggle', async (c) => {
+  const current = await planetaryMode(c.env);
+  const next = current === 'active' ? 'single' : 'active';
+  if (c.env.MAXOS_STATE) {
+    await c.env.MAXOS_STATE.put('planetary:mode', next);
+  }
+  return c.json({ mode: next });
+});
+
+router.get('/version/read', (c) => {
+  return c.json({
     ok: true,
     service: 'MAX-OS-1',
     version: c.env.MAX_OS_VERSION ?? '1',
     build: 'portal-os',
     commit: 'unknown',
-  }),
-);
+  });
+});
 
 // ------------------------------------------------------------
-// MAX-OS Window Manager Introspection API (Unified DO)
+// Window Manager Introspection (Unified DO)
 // ------------------------------------------------------------
 router.get('/introspection/windows/state', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
-  const result = await kernel.fetch(new Request('https://portal/api/windows/state'));
-  return c.json(await result.json());
+  const stub = kernelStub(c.env);
+  const res = await stub.fetch(new Request('https://portal/api/windows/state'));
+  return c.json(await res.json());
 });
 
 router.get('/introspection/windows/focus', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
-  const result = await kernel.fetch(new Request('https://portal/api/windows/focus'));
-  return c.json(await result.json());
+  const stub = kernelStub(c.env);
+  const res = await stub.fetch(new Request('https://portal/api/windows/focus'));
+  return c.json(await res.json());
 });
 
 router.get('/introspection/windows/layout', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
-  const result = await kernel.fetch(new Request('https://portal/api/windows/layout'));
-  return c.json(await result.json());
+  const stub = kernelStub(c.env);
+  const res = await stub.fetch(new Request('https://portal/api/windows/layout'));
+  return c.json(await res.json());
 });
 
 router.get('/introspection/windows/timeline', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
-  const result = await kernel.fetch(new Request('https://portal/api/windows/timeline'));
-  return c.json(await result.json());
+  const stub = kernelStub(c.env);
+  const res = await stub.fetch(new Request('https://portal/api/windows/timeline'));
+  return c.json(await res.json());
 });
 
 // ------------------------------------------------------------
-// MAX-OS Window Manager Interactive API (Unified DO)
+// Window Manager Interactive (Unified DO)
 // ------------------------------------------------------------
 router.post('/windows/open', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
+  const stub = kernelStub(c.env);
   const body = await c.req.json();
-  const result = await kernel.fetch(
-    new Request('https://portal/api/windows/open', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  );
-  return c.json(await result.json());
+  const res = await stub.fetch(new Request('https://portal/api/windows/open', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }));
+  return c.json(await res.json());
 });
 
 router.post('/windows/close', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
+  const stub = kernelStub(c.env);
   const body = await c.req.json();
-  const result = await kernel.fetch(
-    new Request('https://portal/api/windows/close', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  );
-  return c.json(await result.json());
+  const res = await stub.fetch(new Request('https://portal/api/windows/close', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }));
+  return c.json(await res.json());
 });
 
 // ------------------------------------------------------------
-// MAX-OS Portal Surface API (Unified DO)
+// Portal Surface (Unified DO)
 // ------------------------------------------------------------
 router.post('/portal/open', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
+  const stub = kernelStub(c.env);
   const body = await c.req.json();
-  const result = await kernel.fetch(
-    new Request('https://portal/api/portal/open', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-  );
-  return c.json(await result.json());
+  const res = await stub.fetch(new Request('https://portal/api/portal/open', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }));
+  return c.json(await res.json());
 });
 
 router.get('/portal/state', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
-  const result = await kernel.fetch(new Request('https://portal/api/portal/state'));
-  return c.json(await result.json());
+  const stub = kernelStub(c.env);
+  const res = await stub.fetch(new Request('https://portal/api/portal/state'));
+  return c.json(await res.json());
 });
 
 router.get('/portal/timeline', async (c) => {
-  const kernel = c.env.PORTAL_KERNEL.get(c.env.PORTAL_KERNEL.idFromName('kernel'));
-  const result = await kernel.fetch(new Request('https://portal/api/portal/timeline'));
-  return c.json(await result.json());
+  const stub = kernelStub(c.env);
+  const res = await stub.fetch(new Request('https://portal/api/portal/timeline'));
+  return c.json(await res.json());
 });
 
 // ------------------------------------------------------------
@@ -210,7 +212,7 @@ router.get('/portal/timeline', async (c) => {
 app.route('/api', router);
 
 // ------------------------------------------------------------
-// Kernel bridge surfaces (static)
+// Kernel bridge surfaces
 // ------------------------------------------------------------
 app.post('/kernel', async (c) => dispatchRequest(c));
 app.post('/api/kernel/message', async (c) => dispatchRequest(c));
@@ -219,13 +221,15 @@ app.post('/api/kernel/message', async (c) => dispatchRequest(c));
 // Helpers
 // ------------------------------------------------------------
 async function planetaryMode(env: Bindings): Promise<string> {
-  return (await env.MAXOS_STATE?.get(PLANETARY_MODE_KEY)) ?? env.PLANETARY_MODE ?? 'single';
+  return (await env.MAXOS_STATE?.get('planetary:mode')) ?? env.PLANETARY_MODE ?? 'single';
 }
 
-async function dispatchRequest(c: {
-  req: { header(name: string): string | undefined; json(): Promise<unknown> };
-  env: Bindings;
-}): Promise<Response> {
+function kernelStub(env: Bindings) {
+  const id = env.PORTAL_KERNEL.idFromName('kernel');
+  return env.PORTAL_KERNEL.get(id);
+}
+
+async function dispatchRequest(c: any): Promise<Response> {
   let body: unknown;
   try {
     body = await c.req.json();
@@ -235,6 +239,7 @@ async function dispatchRequest(c: {
 
   const payload = asJsonObject(body);
   const lane = payload.lane;
+
   if (!isLane(lane)) {
     return error(400, 'INVALID_LANE', 'lane must be identity, windows, sim, or umbrella');
   }
@@ -266,24 +271,23 @@ function error(status: number, code: string, message: string): Response {
 }
 
 // ------------------------------------------------------------
-// Cloudflare Durable Object Exports (required)
+// Durable Object Exports
 // ------------------------------------------------------------
 export * from './do';
 
 // ------------------------------------------------------------
-// FINAL — ONLY ONE DEFAULT EXPORT
+// FINAL — Worker fetch
 // ------------------------------------------------------------
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/kernel" || url.pathname.startsWith("/kernel/")) {
-      const id = env.PORTAL_KERNEL.idFromName("kernel");
+    if (url.pathname === '/kernel' || url.pathname.startsWith('/kernel/')) {
+      const id = env.PORTAL_KERNEL.idFromName('kernel');
       const stub = env.PORTAL_KERNEL.get(id);
       return stub.fetch(request);
     }
 
     return app.fetch(request, env, ctx);
-  }
+  },
 };
-
