@@ -289,3 +289,20 @@ export default {
   }
 };
 
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/kernel") {
+      const id = env.PORTAL_KERNEL.idFromName("portal-kernel");
+      const stub = env.PORTAL_KERNEL.get(id);
+      return stub.fetch(request);
+    }
+
+    return new Response(JSON.stringify({
+      ok: true,
+      lane: "kernel",
+      lanes: ["identity", "windows", "sim", "umbrella"]
+    }), { status: 200 });
+  }
+};
