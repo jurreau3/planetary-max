@@ -12,6 +12,7 @@ import { windowsEnvelope } from './types';
 
 import { verifyIdentityToken } from './jwt';
 import { requirePermission } from './permissions';
+import { roleAllows } from './roles';
 
 // ------------------------------------------------------------
 // App + Router
@@ -178,6 +179,14 @@ router.post('/windows/open', async (c) => {
   const token = bearer(c.req.header('Authorization'));
   const identity = await verifyIdentityToken(token, c.env);
 
+  const role = identity.ok && identity.roles.length > 0
+    ? identity.roles[0]
+    : 'anonymous';
+
+  if (!roleAllows(role, 'windows')) {
+    return error(403, 'ROLE_FORBIDDEN', `Role '${role}' cannot access windows lane`);
+  }
+
   const check = requirePermission(identity, 'windows:open');
   if (!check.ok) return error(403, check.code, check.message);
 
@@ -193,6 +202,14 @@ router.post('/windows/open', async (c) => {
 router.post('/windows/close', async (c) => {
   const token = bearer(c.req.header('Authorization'));
   const identity = await verifyIdentityToken(token, c.env);
+
+  const role = identity.ok && identity.roles.length > 0
+    ? identity.roles[0]
+    : 'anonymous';
+
+  if (!roleAllows(role, 'windows')) {
+    return error(403, 'ROLE_FORBIDDEN', `Role '${role}' cannot access windows lane`);
+  }
 
   const check = requirePermission(identity, 'windows:close');
   if (!check.ok) return error(403, check.code, check.message);
@@ -212,6 +229,14 @@ router.post('/windows/close', async (c) => {
 router.post('/portal/open', async (c) => {
   const token = bearer(c.req.header('Authorization'));
   const identity = await verifyIdentityToken(token, c.env);
+
+  const role = identity.ok && identity.roles.length > 0
+    ? identity.roles[0]
+    : 'anonymous';
+
+  if (!roleAllows(role, 'portal')) {
+    return error(403, 'ROLE_FORBIDDEN', `Role '${role}' cannot access portal lane`);
+  }
 
   const check = requirePermission(identity, 'portal:open');
   if (!check.ok) return error(403, check.code, check.message);
@@ -277,6 +302,14 @@ async function dispatchRequest(c: any): Promise<Response> {
 
   const token = bearer(c.req.header('Authorization'));
   const identity = await verifyIdentityToken(token, c.env);
+
+  const role = identity.ok && identity.roles.length > 0
+    ? identity.roles[0]
+    : 'anonymous';
+
+  if (!roleAllows(role, lane)) {
+    return error(403, 'ROLE_FORBIDDEN', `Role '${role}' cannot access lane '${lane}'`);
+  }
 
   const envelope: KernelEnvelope = {
     id: typeof payload.id === 'string' ? payload.id : crypto.randomUUID(),
