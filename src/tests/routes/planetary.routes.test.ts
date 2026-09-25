@@ -9,6 +9,7 @@ describe('planetary routes', () => {
     expect(response.status).toBe(200);
     assertPlanetary(await expectJSON(response));
   });
+
   it('toggles the planetary mode', async () => {
     const response = await run('/api/planetary/toggle', { method: 'POST' });
     expect(response.status).toBe(200);

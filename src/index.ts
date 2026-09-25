@@ -11,7 +11,6 @@ import { windowsEnvelope } from './types';
 const app = new Hono<{ Bindings: Bindings }>();
 const router = new Hono<{ Bindings: Bindings }>();
 const PLANETARY_MODE_KEY = 'planetary:mode';
-let inMemoryPlanetaryMode: string | undefined;
 
 app.use('*', cors({
   origin: '*',
@@ -27,7 +26,6 @@ app.get('/umbrella/mode', (c) => c.json({ ok: true, mode: umbrellaMode(c.env.UMB
 app.get('/sim', (c) => c.json(beeSimEnvelope()));
 app.get('/windows', (c) => c.json(windowsEnvelope()));
 
-// The dashboard-facing API is mounted under /api as one explicit router.
 router.get('/kernel/status', (c) => c.json({
   ok: true,
   service: 'PortalKernel',
@@ -36,9 +34,10 @@ router.get('/kernel/status', (c) => c.json({
   lanes: ['identity', 'windows', 'sim', 'umbrella'],
   status: 'ready',
   tick: 0,
-  signals: [],
-  kernelMode: 'single',
+  signals: {},
+  kernelMode: (async () => await planetaryMode(c.env))(),
 }));
+
 router.get('/state/read', (c) => c.json({
   ok: true,
   service: 'MAXOS_STATE',
@@ -47,9 +46,10 @@ router.get('/state/read', (c) => c.json({
     identity: { ready: true },
     runtime: { status: 'ready' },
     planetary: { mode: c.env.PLANETARY_MODE ?? 'single' },
-    phase: c.env.PORTAL_OS_PHASE ?? '11',
+    phase: Number(c.env.PORTAL_OS_PHASE ?? '11'),
   },
 }));
+
 router.get('/umbrella/status', (c) => c.json({
   ok: true,
   service: 'Umbrella Enforcement',
@@ -57,27 +57,25 @@ router.get('/umbrella/status', (c) => c.json({
   governance: governanceEnvelope(umbrellaMode(c.env.UMBRELLA_ENFORCEMENT)),
   rules: ['identity', 'authorization', 'state-coherence'],
   active: true,
-  lastUpdate: '2026-01-01T00:00:00.000Z',
+  lastUpdate: Date.now(),
 }));
+
 router.get('/phase/status', (c) => c.json({
   ok: true,
   service: 'Portal-OS',
-  phase: c.env.PORTAL_OS_PHASE ?? '11',
-  coherence: true,
-  signals: [],
+  phase: Number(c.env.PORTAL_OS_PHASE ?? '11'),
+  coherence: 1,
+  signals: {},
 }));
-router.get('/planetary/mode', async (c) => c.json({
-  mode: await planetaryMode(c.env),
-}));
+
+router.get('/planetary/mode', async (c) => c.json({ mode: await planetaryMode(c.env) }));
+
 router.post('/planetary/toggle', async (c) => {
   const mode = (await planetaryMode(c.env)) === 'active' ? 'single' : 'active';
-  if (c.env.MAXOS_STATE) {
-    await c.env.MAXOS_STATE.put(PLANETARY_MODE_KEY, mode);
-  } else {
-    inMemoryPlanetaryMode = mode;
-  }
+  if (c.env.MAXOS_STATE) await c.env.MAXOS_STATE.put(PLANETARY_MODE_KEY, mode);
   return c.json({ mode });
 });
+
 router.get('/version/read', (c) => c.json({
   ok: true,
   service: 'MAX-OS-1',
@@ -93,7 +91,7 @@ app.post('/kernel', async (c) => dispatchRequest(c));
 app.post('/api/kernel/message', async (c) => dispatchRequest(c));
 
 async function planetaryMode(env: Bindings): Promise<string> {
-  return await env.MAXOS_STATE?.get(PLANETARY_MODE_KEY) ?? inMemoryPlanetaryMode ?? env.PLANETARY_MODE ?? 'single';
+  return (await env.MAXOS_STATE?.get(PLANETARY_MODE_KEY)) ?? env.PLANETARY_MODE ?? 'single';
 }
 
 async function dispatchRequest(c: { req: { header(name: string): string | undefined; json(): Promise<unknown> }; env: Bindings }): Promise<Response> {
