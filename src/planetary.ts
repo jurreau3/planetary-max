@@ -1,19 +1,29 @@
-export type PlanetaryEnvelope = {
-  ok: true;
-  service: 'MAX-OS-1';
-  version: '1';
-  mode: 'active';
-  surface: 'sim';
-  placeholder: true;
-};
+import type { JsonObject } from './contracts';
 
-export function beeSimEnvelope(): PlanetaryEnvelope {
+/**
+ * beeSimEnvelope
+ *
+ * Returns a lightweight planetary / simulation envelope for the /sim route.
+ * This is the public, read‑only view of the planetary simulation state.
+ */
+export function beeSimEnvelope(): JsonObject {
   return {
     ok: true,
-    service: 'MAX-OS-1',
-    version: '1',
-    mode: 'active',
-    surface: 'sim',
-    placeholder: true,
+    service: 'MAX-SIM',
+    mode: 'planetary',
+    topology: {
+      kind: 'bee-sim',
+      version: 1,
+    },
+    state: {
+      swarm: {
+        active: true,
+        count: 0,
+      },
+      environment: {
+        weather: 'clear',
+        field: 'default',
+      },
+    },
   };
 }
