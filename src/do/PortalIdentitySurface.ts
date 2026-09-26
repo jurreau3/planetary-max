@@ -52,7 +52,7 @@ export async function saveIdentitySurface(
 }
 
 // ------------------------------------------------------------
-// Identity helpers
+// Identity Upsert
 // ------------------------------------------------------------
 export function upsertIdentity(
   state: IdentitySurfaceState,
@@ -102,6 +102,9 @@ export function upsertIdentity(
   };
 }
 
+// ------------------------------------------------------------
+// Presence Update
+// ------------------------------------------------------------
 export function updateIdentityPresence(
   state: IdentitySurfaceState,
   identityId: string,
