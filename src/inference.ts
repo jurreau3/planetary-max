@@ -1,73 +1,45 @@
 //
-// Unified Inference Engine
-// MAX‑Institute + Portal‑OS Wing
+// MAX‑Inference Substrate
 //
 
-import {
-  GovernanceInference,
-  InferenceArtifacts,
-  InferenceFact,
-  InferenceFactKind,
-  InferenceHypothesis,
-  InferenceRecommendation,
-  KernelResult,
-  PortalKernelState,
-  SimEvent,
-  SimTecTaskState,
-  SimTickDiff,
-  SimWindowState,
-} from "./types";
+import type { JsonObject } from "./contracts";
 
-export function extractFactsFromKernel(
-  kernel: KernelResult
-): InferenceFact[] {
-  const facts: InferenceFact[] = [];
+export type InferenceInput = {
+  context: JsonObject;
+  substrate: JsonObject;
+  quantum: JsonObject;
+  institute: JsonObject;
+  planetary: JsonObject;
+};
 
-  if (kernel.governance) {
-    facts.push({
-      id: "governance-mode",
-      kind: "governance",
-      payload: kernel.governance.mode,
-    });
-  }
+export type InferenceResult = {
+  ok: boolean;
+  result: JsonObject;
+};
 
-  return facts;
-}
-
-export function raiseConfidenceFromBehavior(
-  facts: InferenceFact[]
-): InferenceHypothesis {
-  const confidence =
-    facts.length > 2 ? 0.9 : facts.length > 0 ? 0.6 : 0.3;
-
+/**
+ * runInference
+ *
+ * Placeholder inference engine.
+ */
+export async function runInference(input: InferenceInput): Promise<InferenceResult> {
   return {
-    id: "behavior-hypothesis",
-    facts,
-    confidence,
+    ok: true,
+    result: {
+      echo: input,
+    },
   };
 }
 
-export function recommendSubstrateAdjustment(
-  state: PortalKernelState
-): InferenceRecommendation {
+/**
+ * toInferenceEnvelope
+ *
+ * Normalizes inference results into a public envelope.
+ */
+export function toInferenceEnvelope(result: InferenceResult): JsonObject {
   return {
-    id: "substrate-recommendation",
-    target: "substrate",
-    payload: { stabilityDelta: -0.1 },
-  };
-}
-
-export function runInferenceFromKernel(
-  kernel: KernelResult,
-  state: PortalKernelState
-): InferenceArtifacts {
-  const facts = extractFactsFromKernel(kernel);
-  const hypotheses = [raiseConfidenceFromBehavior(facts)];
-  const recommendations = [recommendSubstrateAdjustment(state)];
-
-  return {
-    facts,
-    hypotheses,
-    recommendations,
+    ok: result.ok,
+    service: "MAX-INFERENCE",
+    result: result.result,
   };
 }
