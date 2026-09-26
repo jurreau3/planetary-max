@@ -1,72 +1,126 @@
 //
-// Portal‑OS Kernel Durable Object
-// Window Manager + Portal Surface + OS State
+// Portal‑OS Kernel Router
+// Governance → Identity → Kernel DO Dispatch → Introspection
 //
 
-import type { Env } from './contracts';
-import {
-  createEmptyWindowManagerState,
-  WindowManagerState,
-} from './windows';
-import {
-  createEmptyPortalSurfaceState,
-  PortalSurfaceState,
-} from './portal';
-import {
-  createEmptyPortalOsState,
-  PortalOsState,
-} from './state';
-import { kernelError } from './errors';
+import { Hono } from "hono";
+import type { Bindings } from "./contracts";
 
-export class PortalKernel {
-  private windows: WindowManagerState;
-  private portal: PortalSurfaceState;
-  private os: PortalOsState;
+import { kernelError } from "./errors";
+import { identityEnvelope } from "./identity";
+import { enforceUmbrella, toUmbrellaErrorEnvelope } from "./umbrella-enforce";
 
-  constructor(private readonly state: DurableObjectState, private readonly env: Env) {
-    this.windows = createEmptyWindowManagerState();
-    this.portal = createEmptyPortalSurfaceState();
-    this.os = createEmptyPortalOsState(this.windows, this.portal, env.PORTAL_OS_VERSION, env.PORTAL_PLANETARY_MODE);
-  }
+import { toWindowsEnvelope } from "./windows";
+import { toPortalEnvelope } from "./portal";
+import { toOsEnvelope } from "./state";
 
-  async fetch(request: Request): Promise<Response> {
-    try {
-      const url = new URL(request.url);
-      const path = url.pathname;
+export function kernelRouter(app: Hono<{ Bindings: Bindings }>) {
+  //
+  // /kernel/:lane
+  // Main entry point into the Portal‑OS Kernel Durable Object.
+  //
+  app.post("/kernel/:lane", async (c) => {
+    const lane = c.req.param("lane");
+    const env = c.env;
 
-      if (path === '/kernel/windows/state') {
-        return this.json(this.windows);
-      }
+    const token = c.req.header("authorization")?.replace("Bearer ", "");
+    const identity = await identityEnvelope(token, env);
 
-      if (path === '/kernel/portal/state') {
-        return this.json(this.portal);
-      }
-
-      if (path === '/kernel/os/state') {
-        this.os = {
-          ...this.os,
-          windows: this.windows,
-          portal: this.portal,
-        };
-        return this.json(this.os);
-      }
-
-      return new Response(JSON.stringify(kernelError('Unknown kernel route', { path })), {
-        status: 404,
-        headers: { 'content-type': 'application/json' },
-      });
-    } catch (err) {
-      return new Response(JSON.stringify(kernelError('Kernel exception', { error: String(err) })), {
-        status: 500,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-  }
-
-  private json(body: unknown, status = 200): Response {
-    return new Response(JSON.stringify(body), {
-      status,
-      headers: { 'content-type': 'application/json' },
+    const gov = enforceUmbrella(env.UMBRELLA_ENFORCEMENT, {
+      identityOk: identity.ok,
+      rolesOk: identity.ok,
+      permissionsOk: identity.ok,
+      laneOk: Boolean(lane),
+      planetaryOk: true,
     });
-  }
+
+    if (!gov.ok) {
+      return c.json(toUmbrellaErrorEnvelope(gov.error!), 403);
+    }
+
+    try {
+      const id = env.PORTAL_KERNEL.idFromName("PORTAL-KERNEL");
+      const stub = env.PORTAL_KERNEL.get(id);
+
+      const result = await stub.fetch(c.req.raw);
+      return result;
+    } catch (err) {
+      return c.json(
+        kernelError("Kernel dispatch failed", { error: String(err) }),
+        500,
+      );
+    }
+  });
+
+  //
+  // /introspection/windows/state
+  //
+  app.get("/introspection/windows/state", async (c) => {
+    try {
+      const id = c.env.PORTAL_KERNEL.idFromName("PORTAL-KERNEL");
+      const stub = c.env.PORTAL_KERNEL.get(id);
+
+      const res = await stub.fetch("https://kernel.internal/kernel/windows/state");
+      const json = await res.json();
+
+      return c.json(toWindowsEnvelope(json));
+    } catch (err) {
+      return c.json(
+        kernelError("Kernel windows introspection failed", { error: String(err) }),
+        500,
+      );
+    }
+  });
+
+  //
+  // /introspection/portal/state
+  //
+  app.get("/introspection/portal/state", async (c) => {
+    try {
+      const id = c.env.PORTAL_KERNEL.idFromName("PORTAL-KERNEL");
+      const stub = c.env.PORTAL_KERNEL.get(id);
+
+      const res = await stub.fetch("https://kernel.internal/kernel/portal/state");
+      const json = await res.json();
+
+      return c.json(toPortalEnvelope(json));
+    } catch (err) {
+      return c.json(
+        kernelError("Kernel portal introspection failed", { error: String(err) }),
+        500,
+      );
+    }
+  });
+
+  //
+  // /introspection/os
+  //
+  app.get("/introspection/os", async (c) => {
+    try {
+      const id = c.env.PORTAL_KERNEL.idFromName("PORTAL-KERNEL");
+      const stub = c.env.PORTAL_KERNEL.get(id);
+
+      const res = await stub.fetch("https://kernel.internal/kernel/os/state");
+      const json = await res.json();
+
+      return c.json(toOsEnvelope(json));
+    } catch (err) {
+      return c.json(
+        kernelError("Kernel OS introspection failed", { error: String(err) }),
+        500,
+      );
+    }
+  });
+
+  //
+  // Fallback
+  //
+  app.all("*", (c) => {
+    return c.json(
+      kernelError("Unknown kernel router route", { path: c.req.path }),
+      404,
+    );
+  });
+
+  return app;
 }
