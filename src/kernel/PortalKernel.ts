@@ -1,5 +1,5 @@
 // src/kernel/PortalKernel.ts
-// Portal‑OS v11 — Unified Kernel with Quantum + Advisory
+// Portal‑OS v11 — Kernel with Identity Surfaces, Quantum, Advisory
 
 import type { DurableObjectState } from "@cloudflare/workers-types";
 import type { Bindings, KernelEnvelope, JsonObject } from "../contracts";
@@ -42,6 +42,14 @@ import {
   evaluateAdvisory,
   toAdvisoryEnvelope,
 } from "../do/PortalAdvisory";
+
+import {
+  loadIdentitySurface,
+  saveIdentitySurface,
+  upsertIdentity,
+  updateIdentityPresence,
+  toIdentitySurfaceEnvelope,
+} from "../do/PortalIdentitySurface";
 
 export class PortalKernel {
   state: DurableObjectState;
@@ -87,6 +95,8 @@ export class PortalKernel {
     switch (lane) {
       case "identity":
         return this.handleIdentity(id, identity, payload);
+      case "identity:surface":
+        return this.handleIdentitySurface(identity, payload);
       case "windows":
         return this.handleWindows(id, identity, payload);
       case "sim":
@@ -100,7 +110,7 @@ export class PortalKernel {
       case "portal:diff":
         return this.handlePortalDiff(payload);
       case "portal:quantum":
-        return this.handlePortalQuantum(payload);
+        return this.handlePortalQuantum(identity, payload);
       case "portal:advisory":
         return this.handlePortalAdvisory();
       default:
@@ -151,6 +161,21 @@ export class PortalKernel {
       identity,
       echo: payload,
     });
+  }
+
+  async handleIdentitySurface(
+    identity: string,
+    payload: JsonObject
+  ): Promise<Response> {
+    let identitySurface = await loadIdentitySurface(this.state);
+
+    const name = payload.name ?? identity ?? "anonymous";
+    const role = (payload.role as any) ?? "user";
+
+    identitySurface = upsertIdentity(identitySurface, identity, name, role);
+    await saveIdentitySurface(this.state, identitySurface);
+
+    return Response.json(toIdentitySurfaceEnvelope(identitySurface));
   }
 
   async handleWindows(
@@ -231,6 +256,7 @@ export class PortalKernel {
 
     let surface = await this.loadSurface();
     let timeline = await this.loadTimeline();
+    let identitySurface = await loadIdentitySurface(this.state);
 
     const recordEvent = (panel: string | null) => {
       const event: PortalTimelineEvent = {
@@ -238,10 +264,22 @@ export class PortalKernel {
         timestamp: Date.now(),
         action,
         panel,
-        payload,
+        payload: {
+          ...payload,
+          identity,
+        },
       };
       timeline = addTimelineEvent(timeline, event);
       this.saveTimeline(timeline);
+    };
+
+    const updatePresence = (panelId: string | null) => {
+      identitySurface = updateIdentityPresence(
+        identitySurface,
+        identity,
+        panelId
+      );
+      this.state.storage.put("portal:identity-surface", identitySurface);
     };
 
     switch (action) {
@@ -260,6 +298,7 @@ export class PortalKernel {
         await this.saveSurface(surface);
 
         recordEvent(panel.id);
+        updatePresence(panel.id);
 
         return Response.json({
           ok: true,
@@ -270,6 +309,7 @@ export class PortalKernel {
           panel,
           surface: toPortalEnvelope(surface),
           timeline: toPortalTimelineEnvelope(timeline),
+          identitySurface: toIdentitySurfaceEnvelope(identitySurface),
         });
       }
 
@@ -278,6 +318,7 @@ export class PortalKernel {
         await this.saveSurface(surface);
 
         recordEvent(payload.panel);
+        updatePresence(payload.panel);
 
         return Response.json({
           ok: true,
@@ -288,6 +329,7 @@ export class PortalKernel {
           panel: payload.panel,
           surface: toPortalEnvelope(surface),
           timeline: toPortalTimelineEnvelope(timeline),
+          identitySurface: toIdentitySurfaceEnvelope(identitySurface),
         });
       }
 
@@ -296,6 +338,7 @@ export class PortalKernel {
         await this.saveSurface(surface);
 
         recordEvent(payload.panel);
+        updatePresence(payload.panel);
 
         return Response.json({
           ok: true,
@@ -306,6 +349,7 @@ export class PortalKernel {
           panel: payload.panel,
           surface: toPortalEnvelope(surface),
           timeline: toPortalTimelineEnvelope(timeline),
+          identitySurface: toIdentitySurfaceEnvelope(identitySurface),
         });
       }
 
@@ -319,6 +363,7 @@ export class PortalKernel {
         await this.saveSurface(surface);
 
         recordEvent(payload.panel);
+        updatePresence(payload.panel);
 
         return Response.json({
           ok: true,
@@ -329,6 +374,7 @@ export class PortalKernel {
           panel: payload.panel,
           surface: toPortalEnvelope(surface),
           timeline: toPortalTimelineEnvelope(timeline),
+          identitySurface: toIdentitySurfaceEnvelope(identitySurface),
         });
       }
 
@@ -337,6 +383,7 @@ export class PortalKernel {
         await this.saveSurface(surface);
 
         recordEvent(payload.panel);
+        updatePresence(payload.panel);
 
         return Response.json({
           ok: true,
@@ -347,6 +394,7 @@ export class PortalKernel {
           panel: payload.panel,
           surface: toPortalEnvelope(surface),
           timeline: toPortalTimelineEnvelope(timeline),
+          identitySurface: toIdentitySurfaceEnvelope(identitySurface),
         });
       }
 
@@ -452,7 +500,10 @@ export class PortalKernel {
     return surface;
   }
 
-  async handlePortalQuantum(payload: JsonObject): Promise<Response> {
+  async handlePortalQuantum(
+    identity: string,
+    payload: JsonObject
+  ): Promise<Response> {
     let quantum = await loadQuantum(this.state);
 
     const field = {
@@ -461,7 +512,10 @@ export class PortalKernel {
       entropy: computeEntropy(payload),
       lane: payload.lane ?? "portal",
       panel: payload.panel ?? null,
-      payload,
+      payload: {
+        ...payload,
+        identity,
+      },
     };
 
     quantum = addQuantumField(quantum, field);
