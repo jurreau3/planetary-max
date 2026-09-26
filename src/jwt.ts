@@ -9,8 +9,7 @@ import { kernelError } from "./errors";
 /**
  * verifyJwt
  *
- * Verifies a JWT using Cloudflare WebCrypto (HMAC SHA‑256).
- * Returns { ok: true, payload } or { ok: false, error }.
+ * Verifies a JWT using HMAC SHA‑256 via WebCrypto.
  */
 export async function verifyJwt(
   token: string | undefined,
@@ -47,7 +46,6 @@ export async function verifyJwt(
     };
   }
 
-  // Import HMAC key
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -56,7 +54,6 @@ export async function verifyJwt(
     ["verify"]
   );
 
-  // Verify signature
   const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
   const signature = base64UrlToBytes(signatureB64);
 
@@ -78,10 +75,29 @@ export async function verifyJwt(
 }
 
 /**
- * base64UrlToBytes
- *
- * Converts base64url → Uint8Array.
+ * Legacy wrapper used by umbrella-enforce.
  */
+export async function verifyIdentityJwt(
+  token: string | undefined,
+  secretOrEnv: string | { JWT_SECRET?: string }
+) {
+  const secret =
+    typeof secretOrEnv === "string"
+      ? secretOrEnv
+      : secretOrEnv.JWT_SECRET ?? "";
+
+  if (!secret) {
+    return {
+      ok: false,
+      error: kernelError("IDENTITY_CONFIG_MISSING", {
+        message: "JWT_SECRET is not configured",
+      }),
+    };
+  }
+
+  return verifyJwt(token, secret);
+}
+
 function base64UrlToBytes(b64url: string): Uint8Array {
   const padded = b64url.replace(/-/g, "+").replace(/_/g, "/");
   const binary = atob(padded);
