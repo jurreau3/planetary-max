@@ -1,110 +1,93 @@
-import { jwtVerify, JWTPayload } from 'jose';
-import type { Bindings } from './contracts';
+//
+// Portal‑OS JWT Substrate
+// Cloudflare‑safe WebCrypto verification
+//
 
-export type IdentityResult =
-  | {
-      ok: true;
-      subject: string;
-      payload: JWTPayload;
-      permissions: string[];
-      roles: string[];
-    }
-  | {
-      ok: false;
-      code: string;
-      message: string;
-    };
+import type { JsonObject } from "./contracts";
+import { kernelError } from "./errors";
 
-const DEFAULT_ISSUER = 'portal-login';
-const DEFAULT_AUDIENCE = 'planetary-max';
-
-function hmacKey(secret: string): Uint8Array {
-  return new TextEncoder().encode(secret);
-}
-
-function extractPermissions(payload: JWTPayload): string[] {
-  const raw =
-    payload.permissions ??
-    payload.perms ??
-    payload.scope ??
-    payload['portal:permissions'];
-
-  if (typeof raw === 'string') {
-    return raw.split(/\s+/).filter(Boolean);
-  }
-
-  if (Array.isArray(raw)) {
-    return raw
-      .map((v) => (typeof v === 'string' ? v : ''))
-      .filter(Boolean);
-  }
-
-  return [];
-}
-
-function extractRoles(payload: JWTPayload): string[] {
-  const raw = payload.roles ?? payload['portal:roles'];
-
-  if (typeof raw === 'string') {
-    return raw.split(/\s+/).filter(Boolean);
-  }
-
-  if (Array.isArray(raw)) {
-    return raw
-      .map((v) => (typeof v === 'string' ? v : ''))
-      .filter(Boolean);
-  }
-
-  return [];
-}
-
-export async function verifyIdentityToken(
+/**
+ * verifyJwt
+ *
+ * Verifies a JWT using Cloudflare WebCrypto (HMAC SHA‑256).
+ * Returns { ok: true, payload } or { ok: false, error }.
+ */
+export async function verifyJwt(
   token: string | undefined,
-  env: Bindings,
-): Promise<IdentityResult> {
+  secret: string
+): Promise<{ ok: true; payload: JsonObject } | { ok: false; error: JsonObject }> {
   if (!token) {
     return {
       ok: false,
-      code: 'MISSING_TOKEN',
-      message: 'Authorization token is required',
+      error: kernelError("JWT_MISSING", { message: "No token provided" }),
     };
   }
 
-  const secret = env.IDENTITY_JWT_SECRET;
-  if (!secret) {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
     return {
       ok: false,
-      code: 'MISSING_SECRET',
-      message: 'IDENTITY_JWT_SECRET is not configured',
+      error: kernelError("JWT_INVALID_FORMAT", {
+        message: "Token must have header.payload.signature",
+      }),
     };
   }
 
-  const issuer = env.IDENTITY_JWT_ISSUER ?? DEFAULT_ISSUER;
-  const audience = env.IDENTITY_JWT_AUDIENCE ?? DEFAULT_AUDIENCE;
+  const [headerB64, payloadB64, signatureB64] = parts;
 
+  let payloadJson: JsonObject;
   try {
-    const key = hmacKey(secret);
-
-    const { payload } = await jwtVerify(token, key, {
-      issuer,
-      audience,
-    });
-
-    const subject =
-      typeof payload.sub === 'string' ? payload.sub : 'unknown';
-
-    return {
-      ok: true,
-      subject,
-      payload,
-      permissions: extractPermissions(payload),
-      roles: extractRoles(payload),
-    };
-  } catch (error: any) {
+    payloadJson = JSON.parse(atob(payloadB64));
+  } catch {
     return {
       ok: false,
-      code: 'INVALID_TOKEN',
-      message: error?.message ?? 'Token verification failed',
+      error: kernelError("JWT_INVALID_PAYLOAD", {
+        message: "Payload is not valid JSON",
+      }),
     };
   }
+
+  // Import HMAC key
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+
+  // Verify signature
+  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+  const signature = base64UrlToBytes(signatureB64);
+
+  const valid = await crypto.subtle.verify("HMAC", key, signature, data);
+
+  if (!valid) {
+    return {
+      ok: false,
+      error: kernelError("JWT_INVALID_SIGNATURE", {
+        message: "Signature verification failed",
+      }),
+    };
+  }
+
+  return {
+    ok: true,
+    payload: payloadJson,
+  };
+}
+
+/**
+ * base64UrlToBytes
+ *
+ * Converts base64url → Uint8Array.
+ */
+function base64UrlToBytes(b64url: string): Uint8Array {
+  const padded = b64url.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
