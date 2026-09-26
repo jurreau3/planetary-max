@@ -1,5 +1,5 @@
 //
-// Portal‑OS Worker Entry (v11 Kernel Substrate)
+// Portal‑OS Worker Entry (v11 Kernel Substrate, API‑Corrected)
 //
 
 import { Hono } from "hono";
@@ -8,7 +8,7 @@ import { cors } from "hono/cors";
 import type { Bindings, KernelEnvelope, KernelLane, JsonObject } from "./contracts";
 
 import { identityEnvelope } from "./identity";
-import { enforceUmbrella, toUmbrellaErrorEnvelope } from "./umbrella-enforce";
+import { toUmbrellaErrorEnvelope } from "./umbrella-enforce";
 
 import { toWindowsEnvelope } from "./windows";
 import { toPortalEnvelope } from "./portal";
@@ -22,7 +22,7 @@ import { roleAllows } from "./roles";
 import { requirePermission } from "./permissions";
 
 const app = new Hono<{ Bindings: Bindings }>();
-const router = new Hono<{ Bindings: Bindings }>();
+const api = new Hono<{ Bindings: Bindings }>();
 
 app.use("*", cors({
   origin: "*",
@@ -44,18 +44,18 @@ app.get("/", (c) => {
 app.get("/health", (c) => c.json({ ok: true, service: "portal-os" }));
 
 // ------------------------------------------------------------
-// Identity
+// API: Identity
 // ------------------------------------------------------------
-app.get("/identity", async (c) => {
+api.get("/identity", async (c) => {
   const token = bearer(c.req.header("Authorization"));
   const result = await identityEnvelope(token, c.env);
   return c.json(result);
 });
 
 // ------------------------------------------------------------
-// Umbrella governance
+// API: Umbrella
 // ------------------------------------------------------------
-app.get("/umbrella", (c) => {
+api.get("/umbrella", (c) => {
   const mode = c.env.UMBRELLA_ENFORCEMENT ?? "strict";
   return c.json({
     ok: true,
@@ -65,23 +65,23 @@ app.get("/umbrella", (c) => {
 });
 
 // ------------------------------------------------------------
-// Windows (introspection)
+// API: Windows
 // ------------------------------------------------------------
-app.get("/windows", (c) => {
+api.get("/windows", (c) => {
   return c.json(toWindowsEnvelope({ windows: {}, order: [] }));
 });
 
 // ------------------------------------------------------------
-// Portal (introspection)
+// API: Portal
 // ------------------------------------------------------------
-app.get("/portal", (c) => {
+api.get("/portal", (c) => {
   return c.json(toPortalEnvelope({ panels: {}, order: [] }));
 });
 
 // ------------------------------------------------------------
-// Planetary (introspection)
+// API: Planetary
 // ------------------------------------------------------------
-app.get("/planetary", (c) => {
+api.get("/planetary", (c) => {
   return c.json(
     toPlanetaryEnvelope({
       globalTick: 0,
@@ -99,9 +99,9 @@ app.get("/planetary", (c) => {
 });
 
 // ------------------------------------------------------------
-// Institute (introspection)
+// API: Institute
 // ------------------------------------------------------------
-app.get("/institute/state", (c) => {
+api.get("/institute/state", (c) => {
   return c.json(
     toInstituteEnvelope({
       canon: { signature: "EMPTY-CANON", truths: [] },
@@ -110,18 +110,18 @@ app.get("/institute/state", (c) => {
   );
 });
 
-app.get("/institute/canon", (c) => {
+api.get("/institute/canon", (c) => {
   return c.json(toCanonEnvelope({ signature: "EMPTY-CANON", truths: [] }));
 });
 
-app.get("/institute/timeline", (c) => {
+api.get("/institute/timeline", (c) => {
   return c.json(toTimelineEnvelope({ events: [] }));
 });
 
 // ------------------------------------------------------------
-// SIM (introspection)
+// API: SIM
 // ------------------------------------------------------------
-app.get("/sim", (c) => {
+api.get("/sim", (c) => {
   return c.json(
     toSimEnvelope({
       tick: 0,
@@ -133,170 +133,26 @@ app.get("/sim", (c) => {
 });
 
 // ------------------------------------------------------------
-// Inference (placeholder)
+// API: Inference
 // ------------------------------------------------------------
-app.get("/inference", async (c) => {
+api.get("/inference", async (c) => {
   const result = { ok: true, result: {} };
   return c.json(toInferenceEnvelope(result));
 });
 
 // ------------------------------------------------------------
-// Portal interactive lanes (via Kernel)
+// API: Portal interactive lanes (via Kernel)
 // ------------------------------------------------------------
-router.post("/portal/open", async (c) => {
-  const token = bearer(c.req.header("Authorization"));
-  const identity = await identityEnvelope(token, c.env);
-
-  if (!identity.ok) {
-    return error(401, "UNAUTHORIZED", "Invalid identity token");
-  }
-
-  const role = identity.identity.role ?? "anonymous";
-
-  if (!roleAllows(role, "portal")) {
-    return error(403, "ROLE_FORBIDDEN", `Role '${role}' cannot access portal lane`);
-  }
-
-  const check = requirePermission(identity, "portal:open");
-  if (!check.ok) return error(403, check.code, check.message);
-
-  const body = (await c.req.json()) as JsonObject;
-
-  const envelope: KernelEnvelope = {
-    id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
-    lane: "portal",
-    payload: body,
-    identity: identity.identity,
-  };
-
-  const res = await callKernel(c.env, envelope);
-  return c.json(await res.json());
-});
-
-router.post("/portal/close", async (c) => {
-  const token = bearer(c.req.header("Authorization"));
-  const identity = await identityEnvelope(token, c.env);
-
-  if (!identity.ok) {
-    return error(401, "UNAUTHORIZED", "Invalid identity token");
-  }
-
-  const role = identity.identity.role ?? "anonymous";
-
-  if (!roleAllows(role, "portal")) {
-    return error(403, "ROLE_FORBIDDEN", `Role '${role}' cannot access portal lane`);
-  }
-
-  const check = requirePermission(identity, "portal:close");
-  if (!check.ok) return error(403, check.code, check.message);
-
-  const body = (await c.req.json()) as JsonObject;
-
-  const envelope: KernelEnvelope = {
-    id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
-    lane: "portal",
-    payload: body,
-    identity: identity.identity,
-  };
-
-  const res = await callKernel(c.env, envelope);
-  return c.json(await res.json());
-});
-
-router.post("/portal/move", async (c) => {
-  const token = bearer(c.req.header("Authorization"));
-  const identity = await identityEnvelope(token, c.env);
-
-  if (!identity.ok) {
-    return error(401, "UNAUTHORIZED", "Invalid identity token");
-  }
-
-  const role = identity.identity.role ?? "anonymous";
-
-  if (!roleAllows(role, "portal")) {
-    return error(403, "ROLE_FORBIDDEN", `Role '${role}' cannot access portal lane`);
-  }
-
-  const check = requirePermission(identity, "portal:move");
-  if (!check.ok) return error(403, check.code, check.message);
-
-  const body = (await c.req.json()) as JsonObject;
-
-  const envelope: KernelEnvelope = {
-    id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
-    lane: "portal",
-    payload: body,
-    identity: identity.identity,
-  };
-
-  const res = await callKernel(c.env, envelope);
-  return c.json(await res.json());
-});
-
-router.post("/portal/resize", async (c) => {
-  const token = bearer(c.req.header("Authorization"));
-  const identity = await identityEnvelope(token, c.env);
-
-  if (!identity.ok) {
-    return error(401, "UNAUTHORIZED", "Invalid identity token");
-  }
-
-  const role = identity.identity.role ?? "anonymous";
-
-  if (!roleAllows(role, "portal")) {
-    return error(403, "ROLE_FORBIDDEN", `Role '${role}' cannot access portal lane`);
-  }
-
-  const check = requirePermission(identity, "portal:resize");
-  if (!check.ok) return error(403, check.code, check.message);
-
-  const body = (await c.req.json()) as JsonObject;
-
-  const envelope: KernelEnvelope = {
-    id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
-    lane: "portal",
-    payload: body,
-    identity: identity.identity,
-  };
-
-  const res = await callKernel(c.env, envelope);
-  return c.json(await res.json());
-});
-
-router.post("/portal/toggle", async (c) => {
-  const token = bearer(c.req.header("Authorization"));
-  const identity = await identityEnvelope(token, c.env);
-
-  if (!identity.ok) {
-    return error(401, "UNAUTHORIZED", "Invalid identity token");
-  }
-
-  const role = identity.identity.role ?? "anonymous";
-
-  if (!roleAllows(role, "portal")) {
-    return error(403, "ROLE_FORBIDDEN", `Role '${role}' cannot access portal lane`);
-  }
-
-  const check = requirePermission(identity, "portal:toggle");
-  if (!check.ok) return error(403, check.code, check.message);
-
-  const body = (await c.req.json()) as JsonObject;
-
-  const envelope: KernelEnvelope = {
-    id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
-    lane: "portal",
-    payload: body,
-    identity: identity.identity,
-  };
-
-  const res = await callKernel(c.env, envelope);
-  return c.json(await res.json());
-});
+api.post("/portal/open", async (c) => portalAction(c, "portal:open"));
+api.post("/portal/close", async (c) => portalAction(c, "portal:close"));
+api.post("/portal/move", async (c) => portalAction(c, "portal:move"));
+api.post("/portal/resize", async (c) => portalAction(c, "portal:resize"));
+api.post("/portal/toggle", async (c) => portalAction(c, "portal:toggle"));
 
 // ------------------------------------------------------------
-// Portal timeline + diff (via Kernel)
+// API: Portal timeline + diff + replay
 // ------------------------------------------------------------
-router.get("/portal/timeline", async (c) => {
+api.get("/portal/timeline", async (c) => {
   const stub = kernelStub(c.env);
   const res = await stub.fetch(
     new Request("https://portal/api/portal/timeline", {
@@ -312,8 +168,8 @@ router.get("/portal/timeline", async (c) => {
   return c.json(await res.json());
 });
 
-router.post("/portal/diff", async (c) => {
-  const body = (await c.req.json()) as JsonObject;
+api.post("/portal/diff", async (c) => {
+  const body = await c.req.json();
 
   const stub = kernelStub(c.env);
   const res = await stub.fetch(
@@ -331,10 +187,29 @@ router.post("/portal/diff", async (c) => {
   return c.json(await res.json());
 });
 
+api.post("/portal/replay", async (c) => {
+  const body = await c.req.json();
+
+  const stub = kernelStub(c.env);
+  const res = await stub.fetch(
+    new Request("https://portal/api/portal/replay", {
+      method: "POST",
+      body: JSON.stringify({
+        id: crypto.randomUUID(),
+        lane: "portal:replay",
+        payload: body,
+        identity: "introspection",
+      }),
+    })
+  );
+
+  return c.json(await res.json());
+});
+
 // ------------------------------------------------------------
-// Attach router under /api
+// Mount API under /api
 // ------------------------------------------------------------
-app.route("/api", router);
+app.route("/api", api);
 
 // ------------------------------------------------------------
 // Kernel bridge surfaces
@@ -345,6 +220,36 @@ app.post("/api/kernel/message", async (c) => dispatchKernel(c));
 // ------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------
+async function portalAction(c: any, perm: string): Promise<Response> {
+  const token = bearer(c.req.header("Authorization"));
+  const identity = await identityEnvelope(token, c.env);
+
+  if (!identity.ok) {
+    return error(401, "UNAUTHORIZED", "Invalid identity token");
+  }
+
+  const role = identity.identity.role ?? "anonymous";
+
+  if (!roleAllows(role, "portal")) {
+    return error(403, "ROLE_FORBIDDEN", `Role '${role}' cannot access portal lane`);
+  }
+
+  const check = requirePermission(identity, perm);
+  if (!check.ok) return error(403, check.code, check.message);
+
+  const body = await c.req.json();
+
+  const envelope: KernelEnvelope = {
+    id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
+    lane: "portal",
+    payload: body,
+    identity: identity.identity,
+  };
+
+  const res = await callKernel(c.env, envelope);
+  return c.json(await res.json());
+}
+
 async function dispatchKernel(c: any): Promise<Response> {
   let body: JsonObject;
 
