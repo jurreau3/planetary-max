@@ -1,3 +1,6 @@
+// src/do/PortalKernel.ts
+// Portal‑OS v11 — Replay‑Enabled Kernel (based on user’s attached file)
+
 import type { DurableObjectState } from "@cloudflare/workers-types";
 import type { Bindings, KernelEnvelope, JsonObject } from "../contracts";
 
@@ -91,6 +94,9 @@ export class PortalKernel {
       case "portal:diff":
         return this.handlePortalDiff(payload);
 
+      case "portal:replay":
+        return this.handlePortalReplay(payload);
+
       default:
         return Response.json(
           {
@@ -159,15 +165,6 @@ export class PortalKernel {
 
     switch (action) {
       case "open":
-        return Response.json({
-          ok: true,
-          lane: "windows",
-          id,
-          identity,
-          action,
-          window: payload.window ?? null,
-        });
-
       case "close":
         return Response.json({
           ok: true,
@@ -426,7 +423,24 @@ export class PortalKernel {
   }
 
   // ------------------------------------------------------------
-  // Replay engine
+  // ⭐ Replay engine lane (added)
+  // ------------------------------------------------------------
+  async handlePortalReplay(payload: JsonObject): Promise<Response> {
+    const eventId = payload.eventId ?? null;
+
+    const timeline = await this.loadTimeline();
+    const surface = await this.replaySurfaceUntil(eventId);
+
+    return Response.json({
+      ok: true,
+      lane: "portal:replay",
+      eventId,
+      surface: toPortalEnvelope(surface),
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Replay engine core
   // ------------------------------------------------------------
   async replaySurfaceUntil(eventId: string): Promise<PortalSurfaceState> {
     const timeline = await this.loadTimeline();
