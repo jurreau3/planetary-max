@@ -9,7 +9,21 @@ import {
   resizePanel,
   togglePanel,
   toPortalEnvelope,
+  type PortalSurfaceState,
 } from "./PortalSurface";
+
+import {
+  createEmptyPortalTimeline,
+  addTimelineEvent,
+  toPortalTimelineEnvelope,
+  type PortalTimeline,
+  type PortalTimelineEvent,
+} from "./PortalTimeline";
+
+import {
+  computePortalDiff,
+  toPortalDiffEnvelope,
+} from "./PortalTimelineDiff";
 
 export class PortalKernel {
   state: DurableObjectState;
@@ -20,6 +34,9 @@ export class PortalKernel {
     this.env = env;
   }
 
+  // ------------------------------------------------------------
+  // Main fetch handler
+  // ------------------------------------------------------------
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
       return Response.json(
@@ -55,14 +72,25 @@ export class PortalKernel {
     switch (lane) {
       case "identity":
         return this.handleIdentity(id, identity, payload);
+
       case "windows":
         return this.handleWindows(id, identity, payload);
+
       case "sim":
         return this.handleSim(id, identity, payload);
+
       case "umbrella":
         return this.handleUmbrella(id, identity, payload);
+
       case "portal":
         return this.handlePortal(id, identity, payload);
+
+      case "portal:timeline":
+        return this.handlePortalTimeline();
+
+      case "portal:diff":
+        return this.handlePortalDiff(payload);
+
       default:
         return Response.json(
           {
@@ -75,6 +103,31 @@ export class PortalKernel {
           { status: 400 }
         );
     }
+  }
+
+  // ------------------------------------------------------------
+  // Storage helpers
+  // ------------------------------------------------------------
+  async loadSurface(): Promise<PortalSurfaceState> {
+    return (
+      (await this.state.storage.get("portal:surface")) ??
+      createEmptyPortalSurfaceState()
+    );
+  }
+
+  async saveSurface(surface: PortalSurfaceState) {
+    await this.state.storage.put("portal:surface", surface);
+  }
+
+  async loadTimeline(): Promise<PortalTimeline> {
+    return (
+      (await this.state.storage.get("portal:timeline")) ??
+      createEmptyPortalTimeline()
+    );
+  }
+
+  async saveTimeline(timeline: PortalTimeline) {
+    await this.state.storage.put("portal:timeline", timeline);
   }
 
   // ------------------------------------------------------------
@@ -111,7 +164,7 @@ export class PortalKernel {
           lane: "windows",
           id,
           identity,
-          action: "open",
+          action,
           window: payload.window ?? null,
         });
 
@@ -121,7 +174,7 @@ export class PortalKernel {
           lane: "windows",
           id,
           identity,
-          action: "close",
+          action,
           window: payload.window ?? null,
         });
 
@@ -182,21 +235,7 @@ export class PortalKernel {
   }
 
   // ------------------------------------------------------------
-  // Portal Surface State Helpers
-  // ------------------------------------------------------------
-  async loadSurface() {
-    return (
-      (await this.state.storage.get("portal:surface")) ??
-      createEmptyPortalSurfaceState()
-    );
-  }
-
-  async saveSurface(surface: any) {
-    await this.state.storage.put("portal:surface", surface);
-  }
-
-  // ------------------------------------------------------------
-  // Portal lane (interactive)
+  // Portal lane (interactive + timeline)
   // ------------------------------------------------------------
   async handlePortal(
     id: string,
@@ -204,7 +243,21 @@ export class PortalKernel {
     payload: JsonObject
   ): Promise<Response> {
     const action = payload.action ?? "noop";
+
     let surface = await this.loadSurface();
+    let timeline = await this.loadTimeline();
+
+    const recordEvent = (panel: string | null) => {
+      const event: PortalTimelineEvent = {
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        action,
+        panel,
+        payload,
+      };
+      timeline = addTimelineEvent(timeline, event);
+      this.saveTimeline(timeline);
+    };
 
     switch (action) {
       case "open": {
@@ -221,14 +274,17 @@ export class PortalKernel {
         surface = openPanel(surface, panel);
         await this.saveSurface(surface);
 
+        recordEvent(panel.id);
+
         return Response.json({
           ok: true,
           lane: "portal",
           id,
           identity,
-          action: "open",
+          action,
           panel,
           surface: toPortalEnvelope(surface),
+          timeline: toPortalTimelineEnvelope(timeline),
         });
       }
 
@@ -236,14 +292,17 @@ export class PortalKernel {
         surface = closePanel(surface, payload.panel);
         await this.saveSurface(surface);
 
+        recordEvent(payload.panel);
+
         return Response.json({
           ok: true,
           lane: "portal",
           id,
           identity,
-          action: "close",
+          action,
           panel: payload.panel,
           surface: toPortalEnvelope(surface),
+          timeline: toPortalTimelineEnvelope(timeline),
         });
       }
 
@@ -251,14 +310,17 @@ export class PortalKernel {
         surface = movePanel(surface, payload.panel, payload.x, payload.y);
         await this.saveSurface(surface);
 
+        recordEvent(payload.panel);
+
         return Response.json({
           ok: true,
           lane: "portal",
           id,
           identity,
-          action: "move",
+          action,
           panel: payload.panel,
           surface: toPortalEnvelope(surface),
+          timeline: toPortalTimelineEnvelope(timeline),
         });
       }
 
@@ -271,14 +333,17 @@ export class PortalKernel {
         );
         await this.saveSurface(surface);
 
+        recordEvent(payload.panel);
+
         return Response.json({
           ok: true,
           lane: "portal",
           id,
           identity,
-          action: "resize",
+          action,
           panel: payload.panel,
           surface: toPortalEnvelope(surface),
+          timeline: toPortalTimelineEnvelope(timeline),
         });
       }
 
@@ -286,14 +351,17 @@ export class PortalKernel {
         surface = togglePanel(surface, payload.panel, payload.visible);
         await this.saveSurface(surface);
 
+        recordEvent(payload.panel);
+
         return Response.json({
           ok: true,
           lane: "portal",
           id,
           identity,
-          action: "toggle",
+          action,
           panel: payload.panel,
           surface: toPortalEnvelope(surface),
+          timeline: toPortalTimelineEnvelope(timeline),
         });
       }
 
@@ -309,5 +377,102 @@ export class PortalKernel {
           { status: 400 }
         );
     }
+  }
+
+  // ------------------------------------------------------------
+  // Portal Timeline read
+  // ------------------------------------------------------------
+  async handlePortalTimeline(): Promise<Response> {
+    const timeline = await this.loadTimeline();
+    return Response.json(toPortalTimelineEnvelope(timeline));
+  }
+
+  // ------------------------------------------------------------
+  // Portal Diff lane
+  // ------------------------------------------------------------
+  async handlePortalDiff(payload: JsonObject): Promise<Response> {
+    const fromId = payload.from;
+    const toId = payload.to;
+
+    const timeline = await this.loadTimeline();
+
+    const eventFrom = timeline.events.find((e) => e.id === fromId);
+    const eventTo = timeline.events.find((e) => e.id === toId);
+
+    if (!eventFrom || !eventTo) {
+      return Response.json(
+        {
+          ok: false,
+          error: {
+            code: "PORTAL_DIFF_EVENT_NOT_FOUND",
+            message: "One or both timeline events not found",
+          },
+        },
+        { status: 404 }
+      );
+    }
+
+    const surfaceBefore = await this.replaySurfaceUntil(fromId);
+    const surfaceAfter = await this.replaySurfaceUntil(toId);
+
+    const diff = computePortalDiff(
+      surfaceBefore,
+      surfaceAfter,
+      eventFrom,
+      eventTo
+    );
+
+    return Response.json(toPortalDiffEnvelope(diff));
+  }
+
+  // ------------------------------------------------------------
+  // Replay engine
+  // ------------------------------------------------------------
+  async replaySurfaceUntil(eventId: string): Promise<PortalSurfaceState> {
+    const timeline = await this.loadTimeline();
+    let surface = createEmptyPortalSurfaceState();
+
+    for (const event of timeline.events) {
+      const { action, panel, payload } = event;
+
+      switch (action) {
+        case "open":
+          surface = openPanel(surface, {
+            id: panel!,
+            title: payload.title ?? panel,
+            x: payload.x ?? 100,
+            y: payload.y ?? 100,
+            width: payload.width ?? 300,
+            height: payload.height ?? 200,
+            visible: true,
+          });
+          break;
+
+        case "close":
+          surface = closePanel(surface, panel!);
+          break;
+
+        case "move":
+          surface = movePanel(surface, panel!, payload.x, payload.y);
+          break;
+
+        case "resize":
+          surface = resizePanel(
+            surface,
+            panel!,
+            payload.width,
+            payload.height
+          );
+          break;
+
+        case "toggle":
+          surface = togglePanel(surface, panel!, payload.visible);
+          break;
+      }
+
+      if (event.id === eventId) break;
+    }
+
+    return surface;
   }
 }
