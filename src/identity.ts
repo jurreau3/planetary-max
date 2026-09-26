@@ -1,52 +1,51 @@
 //
 // Portal‑OS Identity Substrate
-// JWT envelope + auth context
+// JWT → Identity Envelope
 //
 
-import type { Bindings } from "./contracts";
+import type { Bindings, JsonObject } from "./contracts";
+import { kernelError } from "./errors";
+import { verifyJwt } from "./jwt";
 
-export type IdentityEnvelope = {
-  ok: boolean;
-  subject?: string;
-  roles?: string[];
-  claims?: Record<string, unknown>;
-};
-
-export type AuthContext = {
-  identity: IdentityEnvelope;
-};
+export type IdentityEnvelope =
+  | {
+      ok: true;
+      identity: JsonObject;
+    }
+  | {
+      ok: false;
+      error: JsonObject;
+    };
 
 /**
  * identityEnvelope
  *
- * Normalizes the raw authorization token into a stable identity envelope.
- * This is intentionally minimal; real JWT verification can be plugged in later.
+ * Verifies the JWT and returns a normalized identity envelope.
  */
 export async function identityEnvelope(
   token: string | undefined,
-  env: Bindings,
+  env: Bindings
 ): Promise<IdentityEnvelope> {
-  if (!token) {
-    return { ok: false };
+  if (!env.JWT_SECRET) {
+    return {
+      ok: false,
+      error: kernelError("IDENTITY_CONFIG_MISSING", {
+        message: "JWT_SECRET is not configured in environment",
+      }),
+    };
   }
 
-  // Placeholder: treat any non-empty token as valid.
-  // In a real system, you would verify the JWT here using env secrets.
+  const result = await verifyJwt(token, env.JWT_SECRET);
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: result.error,
+    };
+  }
+
   return {
     ok: true,
-    subject: token,
-    roles: [],
-    claims: {},
+    identity: result.payload,
   };
-}
-
-/**
- * requireAuth
- *
- * Throws if identity is not valid. Used by introspection and governance layers.
- */
-export function requireAuth(ctx: AuthContext): void {
-  if (!ctx.identity.ok) {
-    throw new Error("AUTH_REQUIRED");
-  }
 }
