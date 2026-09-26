@@ -1,79 +1,69 @@
-import type { JsonObject } from './contracts';
+//
+// Portal‑OS Error Substrate
+// Normalized error envelopes for kernel, planetary, and generic API surfaces
+//
 
-/**
- * PortalOsErrorCode
- *
- * Unified error codes for Portal‑OS.
- */
-export type PortalOsErrorCode =
-  | 'INVALID_METHOD'
-  | 'INVALID_ENVELOPE'
-  | 'INVALID_LANE'
-  | 'WINDOWS_INVALID_ACTION'
-  | 'IDENTITY_INVALID'
-  | 'IDENTITY_REQUIRED'
-  | 'ROLE_FORBIDDEN'
-  | 'ROLE_REQUIRED'
-  | 'PERMISSION_DENIED'
-  | 'LANE_INVALID'
-  | 'PLANETARY_INCONSISTENT'
-  | 'KERNEL_FAILURE'
-  | 'UNKNOWN';
+import type { JsonObject } from "./contracts";
 
-/**
- * PortalOsError
- *
- * Standardized OS error shape.
- */
-export type PortalOsError = {
-  ok: false;
-  error: {
-    code: PortalOsErrorCode;
-    message: string;
-    details?: JsonObject;
-  };
+export type PortalError = {
+  code: string;
+  message: string;
+  details?: JsonObject;
 };
-
-/**
- * makeError
- *
- * Creates a standardized Portal‑OS error envelope.
- */
-export function makeError(
-  code: PortalOsErrorCode,
-  message: string,
-  details?: JsonObject
-): PortalOsError {
-  return {
-    ok: false,
-    error: {
-      code,
-      message,
-      details,
-    },
-  };
-}
 
 /**
  * kernelError
  *
- * Wraps kernel‑level failures into a Portal‑OS error envelope.
+ * Normalized error envelope for kernel‑level failures.
  */
-export function kernelError(
-  message: string,
-  details?: JsonObject
-): PortalOsError {
-  return makeError('KERNEL_FAILURE', message, details);
+export function kernelError(message: string, details?: JsonObject): JsonObject {
+  const error: PortalError = {
+    code: "KERNEL_ERROR",
+    message,
+    details,
+  };
+
+  return {
+    ok: false,
+    service: "PORTAL-KERNEL",
+    error,
+  };
 }
 
 /**
- * unknownError
+ * planetaryError
  *
- * Fallback for unexpected exceptions.
+ * Normalized error envelope for planetary‑level failures.
  */
-export function unknownError(
-  message: string = 'An unknown error occurred',
-  details?: JsonObject
-): PortalOsError {
-  return makeError('UNKNOWN', message, details);
+export function planetaryError(message: string, details?: JsonObject): JsonObject {
+  const error: PortalError = {
+    code: "PLANETARY_ERROR",
+    message,
+    details,
+  };
+
+  return {
+    ok: false,
+    service: "PLANETARY-STATE",
+    error,
+  };
+}
+
+/**
+ * apiError
+ *
+ * Generic error envelope for Portal‑OS API surfaces.
+ */
+export function apiError(service: string, code: string, message: string, details?: JsonObject): JsonObject {
+  const error: PortalError = {
+    code,
+    message,
+    details,
+  };
+
+  return {
+    ok: false,
+    service,
+    error,
+  };
 }
