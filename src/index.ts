@@ -115,6 +115,21 @@ function kernelStub(env: Bindings) {
   const id = env.PORTAL_KERNEL.idFromName("kernel");
   return env.PORTAL_KERNEL.get(id);
 }
+api.get("/portal/scheduler", async (c) => {
+  const stub = kernelStub(c.env);
+  const res = await stub.fetch(
+    new Request("https://portal/kernel", {
+      method: "POST",
+      body: JSON.stringify({
+        id: crypto.randomUUID(),
+        lane: "portal:scheduler",
+        payload: {},
+      }),
+    })
+  );
+  return c.json(await res.json());
+});
+
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext) {
