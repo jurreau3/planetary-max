@@ -89,6 +89,26 @@ api.get("/portal/advisory", async (c) => {
   return c.json(await res.json());
 });
 
+api.post("/portal/identity-surface", async (c) => {
+  const body = await c.req.json();
+  const identity = body.identity ?? "anonymous";
+
+  const stub = kernelStub(c.env);
+  const res = await stub.fetch(
+    new Request("https://portal/kernel", {
+      method: "POST",
+      body: JSON.stringify({
+        id: crypto.randomUUID(),
+        lane: "identity:surface",
+        identity,
+        payload: body,
+      }),
+    })
+  );
+
+  return c.json(await res.json());
+});
+
 app.route("/api", api);
 
 function kernelStub(env: Bindings) {
