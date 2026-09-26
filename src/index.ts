@@ -8,6 +8,9 @@ import type { Bindings } from "./contracts";
 const app = new Hono<{ Bindings: Bindings }>();
 const api = new Hono<{ Bindings: Bindings }>();
 
+// ------------------------------------------------------------
+// CORS
+// ------------------------------------------------------------
 app.use(
   "*",
   cors({
@@ -17,6 +20,9 @@ app.use(
   })
 );
 
+// ------------------------------------------------------------
+// Root + Health
+// ------------------------------------------------------------
 app.get("/", (c) =>
   c.json({
     ok: true,
@@ -27,6 +33,9 @@ app.get("/", (c) =>
 
 app.get("/health", (c) => c.json({ ok: true }));
 
+// ------------------------------------------------------------
+// Timeline
+// ------------------------------------------------------------
 api.get("/portal/timeline", async (c) => {
   const stub = kernelStub(c.env);
   const res = await stub.fetch(
@@ -42,9 +51,13 @@ api.get("/portal/timeline", async (c) => {
   return c.json(await res.json());
 });
 
+// ------------------------------------------------------------
+// Diff
+// ------------------------------------------------------------
 api.post("/portal/diff", async (c) => {
   const body = await c.req.json();
   const stub = kernelStub(c.env);
+
   const res = await stub.fetch(
     new Request("https://portal/kernel", {
       method: "POST",
@@ -55,12 +68,17 @@ api.post("/portal/diff", async (c) => {
       }),
     })
   );
+
   return c.json(await res.json());
 });
 
+// ------------------------------------------------------------
+// Quantum Substrate
+// ------------------------------------------------------------
 api.post("/portal/quantum", async (c) => {
   const body = await c.req.json();
   const stub = kernelStub(c.env);
+
   const res = await stub.fetch(
     new Request("https://portal/kernel", {
       method: "POST",
@@ -71,11 +89,16 @@ api.post("/portal/quantum", async (c) => {
       }),
     })
   );
+
   return c.json(await res.json());
 });
 
+// ------------------------------------------------------------
+// Advisory Engine
+// ------------------------------------------------------------
 api.get("/portal/advisory", async (c) => {
   const stub = kernelStub(c.env);
+
   const res = await stub.fetch(
     new Request("https://portal/kernel", {
       method: "POST",
@@ -86,14 +109,19 @@ api.get("/portal/advisory", async (c) => {
       }),
     })
   );
+
   return c.json(await res.json());
 });
 
+// ------------------------------------------------------------
+// Identity Surface
+// ------------------------------------------------------------
 api.post("/portal/identity-surface", async (c) => {
   const body = await c.req.json();
   const identity = body.identity ?? "anonymous";
 
   const stub = kernelStub(c.env);
+
   const res = await stub.fetch(
     new Request("https://portal/kernel", {
       method: "POST",
@@ -109,14 +137,12 @@ api.post("/portal/identity-surface", async (c) => {
   return c.json(await res.json());
 });
 
-app.route("/api", api);
-
-function kernelStub(env: Bindings) {
-  const id = env.PORTAL_KERNEL.idFromName("kernel");
-  return env.PORTAL_KERNEL.get(id);
-}
+// ------------------------------------------------------------
+// Scheduler (tick engine)
+// ------------------------------------------------------------
 api.get("/portal/scheduler", async (c) => {
   const stub = kernelStub(c.env);
+
   const res = await stub.fetch(
     new Request("https://portal/kernel", {
       method: "POST",
@@ -127,10 +153,50 @@ api.get("/portal/scheduler", async (c) => {
       }),
     })
   );
+
   return c.json(await res.json());
 });
 
+// ------------------------------------------------------------
+// Umbrella Governance Field
+// ------------------------------------------------------------
+api.post("/portal/umbrella", async (c) => {
+  const body = await c.req.json();
+  const identity = body.identity ?? null;
 
+  const stub = kernelStub(c.env);
+
+  const res = await stub.fetch(
+    new Request("https://portal/kernel", {
+      method: "POST",
+      body: JSON.stringify({
+        id: crypto.randomUUID(),
+        lane: "portal:umbrella",
+        identity,
+        payload: body,
+      }),
+    })
+  );
+
+  return c.json(await res.json());
+});
+
+// ------------------------------------------------------------
+// Mount API
+// ------------------------------------------------------------
+app.route("/api", api);
+
+// ------------------------------------------------------------
+// Kernel Stub
+// ------------------------------------------------------------
+function kernelStub(env: Bindings) {
+  const id = env.PORTAL_KERNEL.idFromName("kernel");
+  return env.PORTAL_KERNEL.get(id);
+}
+
+// ------------------------------------------------------------
+// Worker Export
+// ------------------------------------------------------------
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext) {
     const url = new URL(request.url);
