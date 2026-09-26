@@ -1,87 +1,213 @@
 //
-// MAX‑Inference Engine
-// Unified inference substrate for Portal‑OS + MAX‑Institute + Planetary‑MAX
+// Portal‑OS Unified Introspection Router
+// OS + Windows + Portal + Planetary + Institute + Inference + SIM
 //
 
-import type { JsonObject } from "./contracts";
+import { Hono } from "hono";
+import type { Bindings } from "./contracts";
 
-/**
- * InferenceInput
- *
- * The raw input to the inference engine.
- */
-export type InferenceInput = {
-  context: JsonObject;
-  substrate: JsonObject;
-  quantum?: JsonObject;
-  institute?: JsonObject;
-  planetary?: JsonObject;
-};
+import { identityEnvelope } from "./identity";
+import { enforceUmbrella, toUmbrellaErrorEnvelope } from "./umbrella-enforce";
 
-/**
- * InferenceResult
- *
- * The unified inference output.
- */
-export type InferenceResult = {
-  ok: boolean;
-  signature: string;
-  artifacts: JsonObject;
-  meta: {
-    durationMs: number;
-    substrateUsed: boolean;
-    quantumUsed: boolean;
-    instituteUsed: boolean;
-    planetaryUsed: boolean;
-  };
-};
+import { kernelError } from "./errors";
 
-/**
- * runInference
- *
- * Unified inference engine for Portal‑OS.
- * This is intentionally minimal — the real inference logic can be plugged in later.
- */
-export async function runInference(input: InferenceInput): Promise<InferenceResult> {
-  const start = Date.now();
+import { toOsEnvelope } from "./state";
+import { toWindowsEnvelope } from "./windows";
+import { toPortalEnvelope } from "./portal";
 
-  // Placeholder inference logic:
-  // Merge all available substrates into a single artifact.
-  const artifacts: JsonObject = {
-    context: input.context,
-    substrate: input.substrate,
-    quantum: input.quantum ?? {},
-    institute: input.institute ?? {},
-    planetary: input.planetary ?? {},
-  };
+import { toPlanetaryEnvelope } from "./planetary";
+import {
+  toInstituteEnvelope,
+  toCanonEnvelope,
+  toTimelineEnvelope,
+} from "./institute";
 
-  const durationMs = Date.now() - start;
+import { toInferenceEnvelope } from "./inference";
+import { toSimEnvelope } from "./sim";
 
-  return {
-    ok: true,
-    signature: `INFER-${durationMs}-${Math.random().toString(36).slice(2)}`,
-    artifacts,
-    meta: {
-      durationMs,
-      substrateUsed: true,
-      quantumUsed: !!input.quantum,
-      instituteUsed: !!input.institute,
-      planetaryUsed: !!input.planetary,
-    },
-  };
-}
+export function introspectionRouter(app: Hono<{ Bindings: Bindings }>) {
+  //
+  // Governance wrapper
+  //
+  async function checkGov(c: any) {
+    const env = c.env;
+    const token = c.req.header("authorization")?.replace("Bearer ", "");
+    const identity = await identityEnvelope(token, env);
 
-/**
- * toInferenceEnvelope
- *
- * Converts an inference result into a public JSON envelope.
- */
-export function toInferenceEnvelope(result: InferenceResult): JsonObject {
-  return {
-    ok: result.ok,
-    service: "MAX-INFERENCE",
-    signature: result.signature,
-    artifacts: result.artifacts,
-    meta: result.meta,
-  };
+    const gov = enforceUmbrella(env.UMBRELLA_ENFORCEMENT, {
+      identityOk: identity.ok,
+      rolesOk: identity.ok,
+      permissionsOk: identity.ok,
+      laneOk: true,
+      planetaryOk: true,
+    });
+
+    if (!gov.ok) {
+      return { ok: false, res: c.json(toUmbrellaErrorEnvelope(gov.error!), 403) };
+    }
+
+    return { ok: true };
+  }
+
+  //
+  // Helper: fetch from kernel DO
+  //
+  async function kernelFetch(c: any, path: string) {
+    try {
+      const id = c.env.PORTAL_KERNEL.idFromName("PORTAL-KERNEL");
+      const stub = c.env.PORTAL_KERNEL.get(id);
+
+      const res = await stub.fetch(`https://kernel.internal${path}`);
+      return await res.json();
+    } catch (err) {
+      return { __error: String(err) };
+    }
+  }
+
+  //
+  // OS
+  //
+  app.get("/introspection/os", async (c) => {
+    const gov = await checkGov(c);
+    if (!gov.ok) return gov.res;
+
+    const json = await kernelFetch(c, "/kernel/os/state");
+    if (json.__error) {
+      return c.json(kernelError("OS introspection failed", { error: json.__error }), 500);
+    }
+
+    return c.json(toOsEnvelope(json));
+  });
+
+  //
+  // Windows
+  //
+  app.get("/introspection/windows/state", async (c) => {
+    const gov = await checkGov(c);
+    if (!gov.ok) return gov.res;
+
+    const json = await kernelFetch(c, "/kernel/windows/state");
+    if (json.__error) {
+      return c.json(kernelError("Windows introspection failed", { error: json.__error }), 500);
+    }
+
+    return c.json(toWindowsEnvelope(json));
+  });
+
+  //
+  // Portal
+  //
+  app.get("/introspection/portal/state", async (c) => {
+    const gov = await checkGov(c);
+    if (!gov.ok) return gov.res;
+
+    const json = await kernelFetch(c, "/kernel/portal/state");
+    if (json.__error) {
+      return c.json(kernelError("Portal introspection failed", { error: json.__error }), 500);
+    }
+
+    return c.json(toPortalEnvelope(json));
+  });
+
+  //
+  // Planetary
+  //
+  app.get("/introspection/planetary/state", async (c) => {
+    const gov = await checkGov(c);
+    if (!gov.ok) return gov.res;
+
+    const json = await kernelFetch(c, "/kernel/planetary/state");
+    if (json.__error) {
+      return c.json(kernelError("Planetary introspection failed", { error: json.__error }), 500);
+    }
+
+    return c.json(toPlanetaryEnvelope(json));
+  });
+
+  //
+  // Institute (full)
+  //
+  app.get("/introspection/institute/state", async (c) => {
+    const gov = await checkGov(c);
+    if (!gov.ok) return gov.res;
+
+    const json = await kernelFetch(c, "/kernel/institute/state");
+    if (json.__error) {
+      return c.json(kernelError("Institute introspection failed", { error: json.__error }), 500);
+    }
+
+    return c.json(toInstituteEnvelope(json));
+  });
+
+  //
+  // Institute (canon)
+  //
+  app.get("/introspection/institute/canon", async (c) => {
+    const gov = await checkGov(c);
+    if (!gov.ok) return gov.res;
+
+    const json = await kernelFetch(c, "/kernel/institute/canon");
+    if (json.__error) {
+      return c.json(kernelError("Institute canon introspection failed", { error: json.__error }), 500);
+    }
+
+    return c.json(toCanonEnvelope(json));
+  });
+
+  //
+  // Institute (timeline)
+  //
+  app.get("/introspection/institute/timeline", async (c) => {
+    const gov = await checkGov(c);
+    if (!gov.ok) return gov.res;
+
+    const json = await kernelFetch(c, "/kernel/institute/timeline");
+    if (json.__error) {
+      return c.json(kernelError("Institute timeline introspection failed", { error: json.__error }), 500);
+    }
+
+    return c.json(toTimelineEnvelope(json));
+  });
+
+  //
+  // Inference
+  //
+  app.get("/introspection/inference", async (c) => {
+    const gov = await checkGov(c);
+    if (!gov.ok) return gov.res;
+
+    const json = await kernelFetch(c, "/kernel/inference/state");
+    if (json.__error) {
+      return c.json(kernelError("Inference introspection failed", { error: json.__error }), 500);
+    }
+
+    return c.json(toInferenceEnvelope(json));
+  });
+
+  //
+  // Simulation
+  //
+  app.get("/introspection/sim/state", async (c) => {
+    const gov = await checkGov(c);
+    if (!gov.ok) return gov.res;
+
+    const json = await kernelFetch(c, "/kernel/sim/state");
+    if (json.__error) {
+      return c.json(kernelError("SIM introspection failed", { error: json.__error }), 500);
+    }
+
+    return c.json(toSimEnvelope(json));
+  });
+
+  //
+  // Fallback
+  //
+  app.all("*", (c) => {
+    return c.json(
+      kernelError("Unknown introspection route", { path: c.req.path }),
+      404
+    );
+  });
+
+  return app;
 }
