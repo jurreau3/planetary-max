@@ -1,54 +1,118 @@
-import type { Bindings, KernelEnvelope } from './contracts';
-import { verifyIdentityJwt } from './jwt';
+//
+// Umbrella Governance Enforcement Substrate
+//
 
-export async function enforceUmbrella(
-  rawBearer: string | undefined,
-  env: Bindings,
-  lane: string
-) {
-  const mode = env.UMBRELLA_ENFORCEMENT ?? 'strict';
+import type { Bindings, JsonObject } from "./contracts";
+import { kernelError } from "./errors";
+import { verifyJwt } from "./jwt";
 
-  // Mode: off → allow everything
-  if (mode === 'off') {
-    return { ok: true, identity: 'anonymous', session: null };
+export type UmbrellaCheck = {
+  ok: boolean;
+  error?: JsonObject;
+};
+
+export function enforceUmbrella(
+  mode: string | undefined,
+  context: {
+    identityOk: boolean;
+    rolesOk: boolean;
+    permissionsOk: boolean;
+    laneOk: boolean;
+    planetaryOk: boolean;
+  }
+): UmbrellaCheck {
+  const m = mode ?? "strict";
+
+  if (m === "off") {
+    return { ok: true };
   }
 
-  // No token → anonymous
-  if (!rawBearer) {
-    if (mode === 'strict') {
-      return { ok: false, code: 'AUTH_REQUIRED', message: 'Bearer token required' };
-    }
-    return { ok: true, identity: 'anonymous', session: null };
+  if (!context.identityOk) {
+    return {
+      ok: false,
+      error: kernelError("UMBRELLA_IDENTITY_FAILED", {
+        message: "Identity check failed under umbrella enforcement",
+      }),
+    };
   }
 
-  // Validate JWT
-  let payload;
-  try {
-    payload = await verifyIdentityJwt(rawBearer, env);
-  } catch {
-    return { ok: false, code: 'INVALID_JWT', message: 'JWT rejected' };
+  if (!context.rolesOk) {
+    return {
+      ok: false,
+      error: kernelError("UMBRELLA_ROLES_FAILED", {
+        message: "Role check failed under umbrella enforcement",
+      }),
+    };
   }
 
-  // Expiration check
-  const now = Math.floor(Date.now() / 1000);
-  if (payload.exp && payload.exp < now) {
-    return { ok: false, code: 'JWT_EXPIRED', message: 'Session expired' };
+  if (!context.permissionsOk) {
+    return {
+      ok: false,
+      error: kernelError("UMBRELLA_PERMISSIONS_FAILED", {
+        message: "Permission check failed under umbrella enforcement",
+      }),
+    };
   }
 
-  // Role-based lane enforcement
-  if (lane === 'umbrella') {
-    if (!payload.roles?.includes('admin')) {
-      return { ok: false, code: 'FORBIDDEN', message: 'Admin role required for umbrella lane' };
-    }
+  if (!context.laneOk) {
+    return {
+      ok: false,
+      error: kernelError("UMBRELLA_LANE_FAILED", {
+        message: "Lane check failed under umbrella enforcement",
+      }),
+    };
   }
 
-  // Windows lane: allow all authenticated users
-  // SIM lane: allow all authenticated users
-  // Identity lane: always allowed
+  if (!context.planetaryOk) {
+    return {
+      ok: false,
+      error: kernelError("UMBRELLA_PLANETARY_FAILED", {
+        message: "Planetary check failed under umbrella enforcement",
+      }),
+    };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * toUmbrellaErrorEnvelope
+ *
+ * Normalizes umbrella errors into a public envelope.
+ */
+export function toUmbrellaErrorEnvelope(error: JsonObject | null) {
+  if (!error) {
+    return {
+      ok: true,
+      service: "UMBRELLA",
+      error: null,
+    };
+  }
 
   return {
-    ok: true,
-    identity: payload.sub ?? 'unknown',
-    session: payload,
+    ok: false,
+    service: "UMBRELLA",
+    error,
   };
+}
+
+/**
+ * verifyIdentityJwt
+ *
+ * Legacy wrapper used by older governance code.
+ */
+export async function verifyIdentityJwt(
+  token: string | undefined,
+  env: Bindings
+) {
+  if (!env.JWT_SECRET) {
+    return {
+      ok: false,
+      error: kernelError("IDENTITY_CONFIG_MISSING", {
+        message: "JWT_SECRET is not configured in environment",
+      }),
+    };
+  }
+
+  return verifyJwt(token, env.JWT_SECRET);
 }
