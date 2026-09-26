@@ -1,5 +1,5 @@
 // src/kernel/PortalKernel.ts
-// Portal‑OS v11 — Unified Kernel with Quantum Substrate
+// Portal‑OS v11 — Unified Kernel with Quantum + Advisory
 
 import type { DurableObjectState } from "@cloudflare/workers-types";
 import type { Bindings, KernelEnvelope, JsonObject } from "../contracts";
@@ -28,7 +28,6 @@ import {
   toPortalDiffEnvelope,
 } from "../do/PortalTimelineDiff";
 
-// ⭐ Quantum Substrate imports
 import {
   loadQuantum,
   saveQuantum,
@@ -36,6 +35,13 @@ import {
   computeEntropy,
   toQuantumEnvelope,
 } from "../do/PortalQuantum";
+
+import {
+  loadAdvisory,
+  saveAdvisory,
+  evaluateAdvisory,
+  toAdvisoryEnvelope,
+} from "../do/PortalAdvisory";
 
 export class PortalKernel {
   state: DurableObjectState;
@@ -46,9 +52,6 @@ export class PortalKernel {
     this.env = env;
   }
 
-  // ------------------------------------------------------------
-  // Main fetch handler
-  // ------------------------------------------------------------
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
       return Response.json(
@@ -84,29 +87,22 @@ export class PortalKernel {
     switch (lane) {
       case "identity":
         return this.handleIdentity(id, identity, payload);
-
       case "windows":
         return this.handleWindows(id, identity, payload);
-
       case "sim":
         return this.handleSim(id, identity, payload);
-
       case "umbrella":
         return this.handleUmbrella(id, identity, payload);
-
       case "portal":
         return this.handlePortal(id, identity, payload);
-
       case "portal:timeline":
         return this.handlePortalTimeline();
-
       case "portal:diff":
         return this.handlePortalDiff(payload);
-
-      // ⭐ Quantum Substrate lane
       case "portal:quantum":
         return this.handlePortalQuantum(payload);
-
+      case "portal:advisory":
+        return this.handlePortalAdvisory();
       default:
         return Response.json(
           {
@@ -121,9 +117,6 @@ export class PortalKernel {
     }
   }
 
-  // ------------------------------------------------------------
-  // Storage helpers
-  // ------------------------------------------------------------
   async loadSurface(): Promise<PortalSurfaceState> {
     return (
       (await this.state.storage.get("portal:surface")) ??
@@ -146,9 +139,6 @@ export class PortalKernel {
     await this.state.storage.put("portal:timeline", timeline);
   }
 
-  // ------------------------------------------------------------
-  // Identity lane
-  // ------------------------------------------------------------
   async handleIdentity(
     id: string,
     identity: string,
@@ -163,9 +153,6 @@ export class PortalKernel {
     });
   }
 
-  // ------------------------------------------------------------
-  // Windows lane
-  // ------------------------------------------------------------
   async handleWindows(
     id: string,
     identity: string,
@@ -199,9 +186,6 @@ export class PortalKernel {
     }
   }
 
-  // ------------------------------------------------------------
-  // SIM lane
-  // ------------------------------------------------------------
   async handleSim(
     id: string,
     identity: string,
@@ -219,9 +203,6 @@ export class PortalKernel {
     });
   }
 
-  // ------------------------------------------------------------
-  // Umbrella lane
-  // ------------------------------------------------------------
   async handleUmbrella(
     id: string,
     identity: string,
@@ -241,9 +222,6 @@ export class PortalKernel {
     });
   }
 
-  // ------------------------------------------------------------
-  // Portal lane (interactive + timeline)
-  // ------------------------------------------------------------
   async handlePortal(
     id: string,
     identity: string,
@@ -386,17 +364,11 @@ export class PortalKernel {
     }
   }
 
-  // ------------------------------------------------------------
-  // Portal Timeline read
-  // ------------------------------------------------------------
   async handlePortalTimeline(): Promise<Response> {
     const timeline = await this.loadTimeline();
     return Response.json(toPortalTimelineEnvelope(timeline));
   }
 
-  // ------------------------------------------------------------
-  // Portal Diff lane
-  // ------------------------------------------------------------
   async handlePortalDiff(payload: JsonObject): Promise<Response> {
     const fromId = payload.from;
     const toId = payload.to;
@@ -432,9 +404,6 @@ export class PortalKernel {
     return Response.json(toPortalDiffEnvelope(diff));
   }
 
-  // ------------------------------------------------------------
-  // Replay engine
-  // ------------------------------------------------------------
   async replaySurfaceUntil(eventId: string): Promise<PortalSurfaceState> {
     const timeline = await this.loadTimeline();
     let surface = createEmptyPortalSurfaceState();
@@ -483,9 +452,6 @@ export class PortalKernel {
     return surface;
   }
 
-  // ------------------------------------------------------------
-  // ⭐ Quantum Substrate lane handler
-  // ------------------------------------------------------------
   async handlePortalQuantum(payload: JsonObject): Promise<Response> {
     let quantum = await loadQuantum(this.state);
 
@@ -502,5 +468,22 @@ export class PortalKernel {
     await saveQuantum(this.state, quantum);
 
     return Response.json(toQuantumEnvelope(quantum));
+  }
+
+  async handlePortalAdvisory(): Promise<Response> {
+    let advisory = await loadAdvisory(this.state);
+    const quantum = await loadQuantum(this.state);
+    const timeline = await this.loadTimeline();
+
+    const issues = evaluateAdvisory(quantum, timeline);
+
+    advisory = {
+      issues: [...advisory.issues, ...issues],
+      lastCheck: Date.now(),
+    };
+
+    await saveAdvisory(this.state, advisory);
+
+    return Response.json(toAdvisoryEnvelope(advisory));
   }
 }
