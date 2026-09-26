@@ -1,60 +1,121 @@
 //
-// MAX‑Institute Canon + Truth Layer
-// Unified Portal‑OS Wing
+// MAX‑Institute Substrate
+// Canon + Epistemic Timeline + Envelopes
 //
 
-import {
-  EpistemicEvent,
-  EpistemicTimeline,
-  InstituteCanon,
-  InstituteInferenceFact,
-  InstituteInferenceHypothesis,
-  InstituteQuantumBranch,
-  InstituteSimulationDelta,
+import type { JsonObject } from "./contracts";
+import type {
   InstituteState,
+  InstituteCanon,
   InstituteTruth,
-  InstituteTruthFormation,
+  EpistemicTimeline,
 } from "./types";
 
-export function initialInstituteState(): InstituteState {
+/**
+ * createEmptyInstituteCanon
+ *
+ * Base canon when the institute boots.
+ */
+export function createEmptyInstituteCanon(): InstituteCanon {
   return {
-    canon: {
-      truths: [],
-      signature: "initial",
-    },
-    timeline: [],
+    signature: "EMPTY-CANON",
+    truths: [],
   };
 }
 
-export function recordEpistemicEvent(
-  state: InstituteState,
-  event: EpistemicEvent
-): InstituteState {
+/**
+ * createEmptyEpistemicTimeline
+ *
+ * Base epistemic timeline when the institute boots.
+ */
+export function createEmptyEpistemicTimeline(): EpistemicTimeline {
   return {
-    ...state,
-    timeline: [...state.timeline, event],
+    events: [],
   };
 }
 
-export function formTruth(
-  state: InstituteState,
-  payload: unknown
-): InstituteTruthFormation {
-  const truth: InstituteTruth = {
-    id: `truth-${state.canon.truths.length}`,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    payload,
-    stability: 1,
-  };
-
-  const nextCanon: InstituteCanon = {
-    truths: [...state.canon.truths, truth],
-    signature: `canon-${truth.id}`,
-  };
-
+/**
+ * createEmptyInstituteState
+ *
+ * Base institute state when MAX‑Institute boots.
+ */
+export function createEmptyInstituteState(): InstituteState {
   return {
-    truth,
-    advisory: undefined,
+    canon: createEmptyInstituteCanon(),
+    timeline: createEmptyEpistemicTimeline(),
+  };
+}
+
+/**
+ * addTruthToCanon
+ *
+ * Adds a truth to the institute canon.
+ */
+export function addTruthToCanon(
+  canon: InstituteCanon,
+  truth: InstituteTruth,
+): InstituteCanon {
+  return {
+    ...canon,
+    truths: [...canon.truths, truth],
+  };
+}
+
+/**
+ * appendEpistemicEvent
+ *
+ * Appends an event to the epistemic timeline.
+ */
+export function appendEpistemicEvent(
+  timeline: EpistemicTimeline,
+  event: {
+    id: string;
+    timestamp: number;
+    payload: JsonObject;
+  },
+): EpistemicTimeline {
+  return {
+    ...timeline,
+    events: [...timeline.events, event],
+  };
+}
+
+/**
+ * toInstituteEnvelope
+ *
+ * Converts institute state into a public JSON envelope.
+ */
+export function toInstituteEnvelope(state: InstituteState): JsonObject {
+  return {
+    ok: true,
+    service: "MAX-INSTITUTE",
+    canon: state.canon,
+    timeline: state.timeline,
+  };
+}
+
+/**
+ * toCanonEnvelope
+ *
+ * Canon‑only envelope.
+ */
+export function toCanonEnvelope(canon: InstituteCanon): JsonObject {
+  return {
+    ok: true,
+    service: "MAX-INSTITUTE-CANON",
+    canon,
+  };
+}
+
+/**
+ * toTimelineEnvelope
+ *
+ * Timeline‑only envelope.
+ */
+export function toTimelineEnvelope(timeline: EpistemicTimeline): JsonObject {
+  return {
+    ok: true,
+    service: "MAX-INSTITUTE-TIMELINE",
+    timeline,
   };
 }
