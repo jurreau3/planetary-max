@@ -2,6 +2,7 @@
 // Portal‑OS Contracts Substrate
 // Bindings, Env, and JSON envelope types
 //
+export type KernelLane = "identity" | "windows" | "sim" | "umbrella" | "portal";
 
 export type JsonObject = Record<string, unknown>;
 
