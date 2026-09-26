@@ -117,10 +117,61 @@ export class PortalKernel {
           action: 'close',
           window: payload.window ?? null,
         });
-
       default:
         return Response.json(
           {
             ok: false,
             error: {
-              code: 'WINDOWS_INVALID
+              code: 'WINDOWS_INVALID_ACTION',
+              message: `Unknown windows action: ${action}`,
+            },
+          },
+          { status: 400 }
+        );
+    }
+  }
+
+  // ------------------------------------------------------------
+  // SIM lane
+  // ------------------------------------------------------------
+  async handleSim(
+    id: string,
+    identity: string,
+    payload: JsonObject
+  ): Promise<Response> {
+    return Response.json({
+      ok: true,
+      lane: 'sim',
+      id,
+      identity,
+      sim: {
+        mode: this.env.PLANETARY_MODE ?? 'single',
+        echo: payload,
+      },
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Umbrella lane
+  // ------------------------------------------------------------
+  async handleUmbrella(
+    id: string,
+    identity: string,
+    payload: JsonObject
+  ): Promise<Response> {
+    const mode = this.env.UMBRELLA_ENFORCEMENT ?? 'strict';
+
+    return Response.json({
+      ok: true,
+      lane: 'umbrella',
+      id,
+      identity,
+      governance: {
+        mode,
+        echo: payload,
+      },
+    });
+  }
+}
+
+     
