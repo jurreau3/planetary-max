@@ -1,6 +1,5 @@
 //
 // Portal‑OS Worker Entry
-// Unified Hono router + Kernel bridge + Identity + Umbrella + Windows + Portal
 //
 
 import { Hono } from "hono";
@@ -24,9 +23,6 @@ import { callKernel } from "./kernel-bridge";
 import { roleAllows } from "./roles";
 import { requirePermission } from "./permissions";
 
-// ------------------------------------------------------------
-// App + Router
-// ------------------------------------------------------------
 const app = new Hono<{ Bindings: Bindings }>();
 const router = new Hono<{ Bindings: Bindings }>();
 
@@ -36,9 +32,6 @@ app.use("*", cors({
   allowHeaders: ["Content-Type", "Authorization"],
 }));
 
-// ------------------------------------------------------------
-// Root + health
-// ------------------------------------------------------------
 app.get("/", (c) => {
   return c.json({
     ok: true,
@@ -49,19 +42,12 @@ app.get("/", (c) => {
 
 app.get("/health", (c) => c.json({ ok: true, service: "portal-os" }));
 
-// ------------------------------------------------------------
-// Identity
-// ------------------------------------------------------------
 app.get("/identity", async (c) => {
   const token = bearer(c.req.header("Authorization"));
   const result = await identityEnvelope(token, c.env);
-
   return c.json(result);
 });
 
-// ------------------------------------------------------------
-// Umbrella governance
-// ------------------------------------------------------------
 app.get("/umbrella", (c) => {
   const mode = c.env.UMBRELLA_ENFORCEMENT ?? "strict";
   return c.json({
@@ -71,46 +57,38 @@ app.get("/umbrella", (c) => {
   });
 });
 
-// ------------------------------------------------------------
-// Windows (introspection only)
-// ------------------------------------------------------------
 app.get("/windows", (c) => {
   return c.json(toWindowsEnvelope({ windows: {}, order: [] }));
 });
 
-// ------------------------------------------------------------
-// Portal surface (introspection only)
-// ------------------------------------------------------------
 app.get("/portal", (c) => {
   return c.json(toPortalEnvelope({ panels: {}, order: [] }));
 });
 
-// ------------------------------------------------------------
-// Planetary substrate (introspection only)
-// ------------------------------------------------------------
 app.get("/planetary", (c) => {
-  return c.json(toPlanetaryEnvelope({
-    globalTick: 0,
-    nodes: [],
-    identities: {},
-    substrate: {},
-    quantum: {},
-    canon: {},
-    governance: {},
-    advisories: [],
-    synchronizedAt: Date.now(),
-    packetSignature: "EMPTY",
-  }));
+  return c.json(
+    toPlanetaryEnvelope({
+      globalTick: 0,
+      nodes: [],
+      identities: {},
+      substrate: {},
+      quantum: {},
+      canon: {},
+      governance: {},
+      advisories: [],
+      synchronizedAt: Date.now(),
+      packetSignature: "EMPTY",
+    })
+  );
 });
 
-// ------------------------------------------------------------
-// Institute substrate (introspection only)
-// ------------------------------------------------------------
 app.get("/institute/state", (c) => {
-  return c.json(toInstituteEnvelope({
-    canon: { signature: "EMPTY-CANON", truths: [] },
-    timeline: { events: [] },
-  }));
+  return c.json(
+    toInstituteEnvelope({
+      canon: { signature: "EMPTY-CANON", truths: [] },
+      timeline: { events: [] },
+    })
+  );
 });
 
 app.get("/institute/canon", (c) => {
@@ -121,37 +99,92 @@ app.get("/institute/timeline", (c) => {
   return c.json(toTimelineEnvelope({ events: [] }));
 });
 
-// ------------------------------------------------------------
-// SIM substrate (introspection only)
-// ------------------------------------------------------------
 app.get("/sim", (c) => {
-  return c.json(toSimEnvelope({
-    tick: 0,
-    agents: {},
-    windows: {},
-    substrate: {},
-  }));
+  return c.json(
+    toSimEnvelope({
+      tick: 0,
+      agents: {},
+      windows: {},
+      substrate: {},
+    })
+  );
 });
 
-// ------------------------------------------------------------
-// Inference substrate (introspection only)
-// ------------------------------------------------------------
-app.get("/inference", (c) => {
-  return c.json(toInferenceEnvelope({
-    ok: true,
-    result: {},
-  }));
+app.get("/inference", async (c) => {
+  const result = await runDummyInference();
+  return c.json(toInferenceEnvelope(result));
 });
 
-// ------------------------------------------------------------
-// Kernel bridge surfaces
-// ------------------------------------------------------------
+// -----------------------------
+// Portal interactive lanes
+// -----------------------------
+router.post("/portal/open", async (c) => {
+  const token = bearer(c.req.header("Authorization"));
+  const identity = await identityEnvelope(token, c.env);
+
+  if (!identity.ok) {
+    return error(401, "UNAUTHORIZED", "Invalid identity token");
+  }
+
+  const role = identity.identity.role ?? "anonymous";
+
+  if (!roleAllows(role, "portal")) {
+    return error(403, "ROLE_FORBIDDEN", `Role '${role}' cannot access portal lane`);
+  }
+
+  const check = requirePermission(identity, "portal:open");
+  if (!check.ok) return error(403, check.code, check.message);
+
+  const body = (await c.req.json()) as JsonObject;
+
+  const envelope: KernelEnvelope = {
+    id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
+    lane: "portal",
+    payload: body,
+    identity: identity.identity,
+  };
+
+  const res = await callKernel(c.env, envelope);
+  return c.json(await res.json());
+});
+
+router.post("/portal/close", async (c) => {
+  const token = bearer(c.req.header("Authorization"));
+  const identity = await identityEnvelope(token, c.env);
+
+  if (!identity.ok) {
+    return error(401, "UNAUTHORIZED", "Invalid identity token");
+  }
+
+  const role = identity.identity.role ?? "anonymous";
+
+  if (!roleAllows(role, "portal")) {
+    return error(403, "ROLE_FORBIDDEN", `Role '${role}' cannot access portal lane`);
+  }
+
+  const check = requirePermission(identity, "portal:close");
+  if (!check.ok) return error(403, check.code, check.message);
+
+  const body = (await c.req.json()) as JsonObject;
+
+  const envelope: KernelEnvelope = {
+    id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
+    lane: "portal",
+    payload: body,
+    identity: identity.identity,
+  };
+
+  const res = await callKernel(c.env, envelope);
+  return c.json(await res.json());
+});
+
+// attach router
+app.route("/api", router);
+
+// kernel bridge
 app.post("/kernel", async (c) => dispatchKernel(c));
 app.post("/api/kernel/message", async (c) => dispatchKernel(c));
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
 async function dispatchKernel(c: any): Promise<Response> {
   let body: JsonObject;
 
@@ -164,7 +197,7 @@ async function dispatchKernel(c: any): Promise<Response> {
   const lane = body.lane;
 
   if (!isLane(lane)) {
-    return error(400, "INVALID_LANE", "lane must be identity, windows, sim, or umbrella");
+    return error(400, "INVALID_LANE", "lane must be identity, windows, sim, umbrella, or portal");
   }
 
   const token = bearer(c.req.header("Authorization"));
@@ -200,7 +233,13 @@ async function dispatchKernel(c: any): Promise<Response> {
 }
 
 function isLane(value: unknown): value is KernelLane {
-  return value === "identity" || value === "windows" || value === "sim" || value === "umbrella";
+  return (
+    value === "identity" ||
+    value === "windows" ||
+    value === "sim" ||
+    value === "umbrella" ||
+    value === "portal"
+  );
 }
 
 function bearer(value: string | undefined): string | undefined {
@@ -211,14 +250,15 @@ function error(status: number, code: string, message: string): Response {
   return Response.json({ ok: false, error: { code, message } }, { status });
 }
 
-// ------------------------------------------------------------
-// Durable Object exports
-// ------------------------------------------------------------
+async function runDummyInference() {
+  return {
+    ok: true,
+    result: {},
+  };
+}
+
 export * from "./do";
 
-// ------------------------------------------------------------
-// FINAL — Worker fetch
-// ------------------------------------------------------------
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
