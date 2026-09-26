@@ -1,6 +1,16 @@
 import type { DurableObjectState } from "@cloudflare/workers-types";
 import type { Bindings, KernelEnvelope, JsonObject } from "../contracts";
 
+import {
+  createEmptyPortalSurfaceState,
+  openPanel,
+  closePanel,
+  movePanel,
+  resizePanel,
+  togglePanel,
+  toPortalEnvelope,
+} from "./PortalSurface";
+
 export class PortalKernel {
   state: DurableObjectState;
   env: Bindings;
@@ -11,8 +21,6 @@ export class PortalKernel {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-
     if (request.method !== "POST") {
       return Response.json(
         {
@@ -69,6 +77,9 @@ export class PortalKernel {
     }
   }
 
+  // ------------------------------------------------------------
+  // Identity lane
+  // ------------------------------------------------------------
   async handleIdentity(
     id: string,
     identity: string,
@@ -83,6 +94,9 @@ export class PortalKernel {
     });
   }
 
+  // ------------------------------------------------------------
+  // Windows lane
+  // ------------------------------------------------------------
   async handleWindows(
     id: string,
     identity: string,
@@ -125,6 +139,9 @@ export class PortalKernel {
     }
   }
 
+  // ------------------------------------------------------------
+  // SIM lane
+  // ------------------------------------------------------------
   async handleSim(
     id: string,
     identity: string,
@@ -142,6 +159,9 @@ export class PortalKernel {
     });
   }
 
+  // ------------------------------------------------------------
+  // Umbrella lane
+  // ------------------------------------------------------------
   async handleUmbrella(
     id: string,
     identity: string,
@@ -161,43 +181,121 @@ export class PortalKernel {
     });
   }
 
+  // ------------------------------------------------------------
+  // Portal Surface State Helpers
+  // ------------------------------------------------------------
+  async loadSurface() {
+    return (
+      (await this.state.storage.get("portal:surface")) ??
+      createEmptyPortalSurfaceState()
+    );
+  }
+
+  async saveSurface(surface: any) {
+    await this.state.storage.put("portal:surface", surface);
+  }
+
+  // ------------------------------------------------------------
+  // Portal lane (interactive)
+  // ------------------------------------------------------------
   async handlePortal(
     id: string,
     identity: string,
     payload: JsonObject
   ): Promise<Response> {
     const action = payload.action ?? "noop";
+    let surface = await this.loadSurface();
 
     switch (action) {
-      case "open":
+      case "open": {
+        const panel = {
+          id: payload.panel,
+          title: payload.title ?? payload.panel,
+          x: payload.x ?? 100,
+          y: payload.y ?? 100,
+          width: payload.width ?? 300,
+          height: payload.height ?? 200,
+          visible: true,
+        };
+
+        surface = openPanel(surface, panel);
+        await this.saveSurface(surface);
+
         return Response.json({
           ok: true,
           lane: "portal",
           id,
           identity,
           action: "open",
-          panel: payload.panel ?? null,
+          panel,
+          surface: toPortalEnvelope(surface),
         });
+      }
 
-      case "close":
+      case "close": {
+        surface = closePanel(surface, payload.panel);
+        await this.saveSurface(surface);
+
         return Response.json({
           ok: true,
           lane: "portal",
           id,
           identity,
           action: "close",
-          panel: payload.panel ?? null,
+          panel: payload.panel,
+          surface: toPortalEnvelope(surface),
         });
+      }
 
-      case "move":
+      case "move": {
+        surface = movePanel(surface, payload.panel, payload.x, payload.y);
+        await this.saveSurface(surface);
+
         return Response.json({
           ok: true,
           lane: "portal",
           id,
           identity,
           action: "move",
-          panel: payload.panel ?? null,
+          panel: payload.panel,
+          surface: toPortalEnvelope(surface),
         });
+      }
+
+      case "resize": {
+        surface = resizePanel(
+          surface,
+          payload.panel,
+          payload.width,
+          payload.height
+        );
+        await this.saveSurface(surface);
+
+        return Response.json({
+          ok: true,
+          lane: "portal",
+          id,
+          identity,
+          action: "resize",
+          panel: payload.panel,
+          surface: toPortalEnvelope(surface),
+        });
+      }
+
+      case "toggle": {
+        surface = togglePanel(surface, payload.panel, payload.visible);
+        await this.saveSurface(surface);
+
+        return Response.json({
+          ok: true,
+          lane: "portal",
+          id,
+          identity,
+          action: "toggle",
+          panel: payload.panel,
+          surface: toPortalEnvelope(surface),
+        });
+      }
 
       default:
         return Response.json(
