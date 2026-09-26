@@ -209,3 +209,9 @@ export default {
     return app.fetch(request, env, ctx);
   },
 };
+
+// ------------------------------------------------------------
+// Durable Object Exports (REQUIRED FOR DEPLOY)
+// ------------------------------------------------------------
+export { PortalKernel } from "./kernel/PortalKernel";
+export { new_sqlite_classes } from "./do/new_sqlite_classes";
