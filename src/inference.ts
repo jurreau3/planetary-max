@@ -1,26 +1,12 @@
-//
-// Unified Inference Engine
-// MAX‑Institute + Portal‑OS Wing
-//
-
-import {
-  GovernanceInference,
-  InferenceArtifacts,
+import type {
   InferenceFact,
-  InferenceFactKind,
   InferenceHypothesis,
   InferenceRecommendation,
   KernelResult,
   PortalKernelState,
-  SimEvent,
-  SimTecTaskState,
-  SimTickDiff,
-  SimWindowState,
 } from "./types";
 
-export function extractFactsFromKernel(
-  kernel: KernelResult
-): InferenceFact[] {
+export function extractFactsFromKernel(kernel: KernelResult): InferenceFact[] {
   const facts: InferenceFact[] = [];
 
   if (kernel.governance) {
@@ -34,11 +20,8 @@ export function extractFactsFromKernel(
   return facts;
 }
 
-export function raiseConfidenceFromBehavior(
-  facts: InferenceFact[]
-): InferenceHypothesis {
-  const confidence =
-    facts.length > 2 ? 0.9 : facts.length > 0 ? 0.6 : 0.3;
+export function raiseConfidenceFromBehavior(facts: InferenceFact[]): InferenceHypothesis {
+  const confidence = facts.length > 2 ? 0.9 : facts.length > 0 ? 0.6 : 0.3;
 
   return {
     id: "behavior-hypothesis",
@@ -47,27 +30,25 @@ export function raiseConfidenceFromBehavior(
   };
 }
 
-export function recommendSubstrateAdjustment(
-  state: PortalKernelState
-): InferenceRecommendation {
+export function recommendSubstrateAdjustment(state: PortalKernelState): InferenceRecommendation {
   return {
     id: "substrate-recommendation",
-    target: "substrate",
-    payload: { stabilityDelta: -0.1 },
+    node: "substrate",
+    probability: 0.8,
+    curvature: -0.1,
+    signature: `substrate:${state.substrate.stability}`,
   };
 }
 
 export function runInferenceFromKernel(
   kernel: KernelResult,
-  state: PortalKernelState
-): InferenceArtifacts {
+  state: PortalKernelState,
+): { facts: InferenceFact[]; hypotheses: InferenceHypothesis[]; recommendations: InferenceRecommendation[] } {
   const facts = extractFactsFromKernel(kernel);
   const hypotheses = [raiseConfidenceFromBehavior(facts)];
   const recommendations = [recommendSubstrateAdjustment(state)];
 
-  return {
-    facts,
-    hypotheses,
-    recommendations,
-  };
+  return { facts, hypotheses, recommendations };
 }
+
+export default { extractFactsFromKernel, raiseConfidenceFromBehavior, recommendSubstrateAdjustment, runInferenceFromKernel };
